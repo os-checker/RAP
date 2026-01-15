@@ -62,16 +62,15 @@ impl<'tcx> NodeOrder<'tcx> {
                     // Terminator { source_info: SourceInfo { span: src/main.rs:100:9: 100:35 (#7), scope: scope[0] },
                     // kind: core::panicking::panic(const "assertion failed: index <= self.len") -> bb24 },
                     // destination -> None, cleanup -> Some(bb24)
-                    match target {
-                        Some(t) => result.push(t.as_usize()),
-                        None => (),
+                    if let Some(t) = target {
+                        result.push(t.as_usize())
                     }
                 }
                 TerminatorKind::TailCall { .. } => todo!(),
             }
             // Update the lev for generating topo order.
             for index in result.iter() {
-                lev[*index] = lev[*index] + 1;
+                lev[*index] += 1;
                 self.graph_mut().get_pre_mut()[*index].push(block);
             }
             self.graph_mut().get_edges_mut()[block] = result;
@@ -86,7 +85,7 @@ impl<'tcx> NodeOrder<'tcx> {
             self.graph_mut().get_topo_mut().push(top);
             for cnt in 0..self.graph().e[top].len() {
                 let next = self.graph().e[top][cnt];
-                lev[next] = lev[next] - 1;
+                lev[next] -= 1;
                 if lev[next] == 0 {
                     q.push(next);
                 }

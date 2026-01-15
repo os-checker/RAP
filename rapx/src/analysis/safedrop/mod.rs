@@ -58,7 +58,7 @@ pub fn query_safedrop(tcx: TyCtxt, fn_map: &MopFnAliasMap, def_id: DefId, adt_ow
     let fn_name = get_fn_name(tcx, def_id);
     if fn_name
         .as_ref()
-        .map_or(false, |s| s.contains("__raw_ptr_deref_dummy"))
+        .is_some_and(|s| s.contains("__raw_ptr_deref_dummy"))
     {
         return;
     }

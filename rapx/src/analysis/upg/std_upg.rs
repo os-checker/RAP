@@ -56,10 +56,8 @@ impl<'tcx> UPGAnalysis<'tcx> {
                     if chain.len() > 1 {
                         return true;
                     }
-                    if chain.len() == 1 {
-                        if check_safety(self.tcx, def_id) == Safety::Unsafe {
-                            return true;
-                        }
+                    if chain.len() == 1 && check_safety(self.tcx, def_id) == Safety::Unsafe {
+                        return true;
                     }
                     false
                 })
@@ -214,65 +212,64 @@ impl<'tcx> UPGAnalysis<'tcx> {
         let mut struct_name = "".to_string();
         let mut ty_flag = 0;
         let mut vi_flag = false;
-        if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-            if let Some(impl_id) = assoc_item.impl_container(tcx) {
-                // get struct ty
-                let ty = tcx.type_of(impl_id).skip_binder();
-                if let Some(adt_def) = ty.ty_adt_def() {
-                    if adt_def.is_union() {
-                        ty_flag = 1;
-                    } else if adt_def.is_enum() {
-                        ty_flag = 2;
-                    }
-                    let adt_def_id = adt_def.did();
-                    struct_name = get_cleaned_def_path_name(tcx, adt_def_id);
-                    if !cache.insert(adt_def_id) {
-                        return;
-                    }
+        if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+            && let Some(impl_id) = assoc_item.impl_container(tcx)
+        {
+            // get struct ty
+            let ty = tcx.type_of(impl_id).skip_binder();
+            if let Some(adt_def) = ty.ty_adt_def() {
+                if adt_def.is_union() {
+                    ty_flag = 1;
+                } else if adt_def.is_enum() {
+                    ty_flag = 2;
+                }
+                let adt_def_id = adt_def.did();
+                struct_name = get_cleaned_def_path_name(tcx, adt_def_id);
+                if !cache.insert(adt_def_id) {
+                    return;
+                }
 
-                    vi_flag = false;
-                    let impl_vec = get_impls_for_struct(self.tcx, adt_def_id);
-                    for impl_id in impl_vec {
-                        let associated_items = tcx.associated_items(impl_id);
-                        for item in associated_items.in_definition_order() {
-                            if let ty::AssocKind::Fn {
-                                name: _,
-                                has_self: _,
-                            } = item.kind
+                vi_flag = false;
+                let impl_vec = get_impls_for_struct(self.tcx, adt_def_id);
+                for impl_id in impl_vec {
+                    let associated_items = tcx.associated_items(impl_id);
+                    for item in associated_items.in_definition_order() {
+                        if let ty::AssocKind::Fn {
+                            name: _,
+                            has_self: _,
+                        } = item.kind
+                        {
+                            let item_def_id = item.def_id;
+                            if !get_sp(self.tcx, item_def_id).is_empty() {
+                                vi_flag = true;
+                            }
+                            if get_type(self.tcx, item_def_id) == FnKind::Constructor
+                                && check_safety(self.tcx, item_def_id) == Safety::Unsafe
+                            // && get_sp(self.tcx, item_def_id).len() > 0
                             {
-                                let item_def_id = item.def_id;
-                                if !get_sp(self.tcx, item_def_id).is_empty() {
-                                    vi_flag = true;
-                                }
-                                if get_type(self.tcx, item_def_id) == FnKind::Constructor
-                                    && check_safety(self.tcx, item_def_id) == Safety::Unsafe
-                                // && get_sp(self.tcx, item_def_id).len() > 0
-                                {
-                                    unsafe_constructors.push(item_def_id);
-                                }
-                                if get_type(self.tcx, item_def_id) == FnKind::Constructor
-                                    && check_safety(self.tcx, item_def_id) == Safety::Safe
-                                {
-                                    safe_constructors.push(item_def_id);
-                                }
-                                if get_type(self.tcx, item_def_id) == FnKind::Method
-                                    && check_safety(self.tcx, item_def_id) == Safety::Unsafe
-                                // && get_sp(self.tcx, item_def_id).len() > 0
-                                {
-                                    unsafe_methods.push(item_def_id);
-                                }
-                                if get_type(self.tcx, item_def_id) == FnKind::Method
-                                    && check_safety(self.tcx, item_def_id) == Safety::Safe
-                                {
-                                    if !get_unsafe_callees(tcx, item_def_id).is_empty() {
-                                        safe_methods.push(item_def_id);
-                                    }
-                                }
-                                if get_type(self.tcx, item_def_id) == FnKind::Method
-                                    && has_mut_self_param(self.tcx, item_def_id)
-                                {
-                                    mut_methods.push(item_def_id);
-                                }
+                                unsafe_constructors.push(item_def_id);
+                            }
+                            if get_type(self.tcx, item_def_id) == FnKind::Constructor
+                                && check_safety(self.tcx, item_def_id) == Safety::Safe
+                            {
+                                safe_constructors.push(item_def_id);
+                            }
+                            if get_type(self.tcx, item_def_id) == FnKind::Method
+                                && check_safety(self.tcx, item_def_id) == Safety::Unsafe
+                            // && get_sp(self.tcx, item_def_id).len() > 0
+                            {
+                                unsafe_methods.push(item_def_id);
+                            }
+                            if get_type(self.tcx, item_def_id) == FnKind::Method
+                                && check_safety(self.tcx, item_def_id) == Safety::Safe
+                                && !get_unsafe_callees(tcx, item_def_id).is_empty()
+                            {
+                                safe_methods.push(item_def_id);
+                            }
+                            if get_type(self.tcx, item_def_id) == FnKind::Method
+                                && has_mut_self_param(self.tcx, item_def_id)
+                            {
+                                mut_methods.push(item_def_id);
                             }
                         }
                     }

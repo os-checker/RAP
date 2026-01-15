@@ -64,7 +64,7 @@ impl<'tcx> Analysis for DataFlowAnalyzer<'tcx> {
 impl<'tcx> DataFlowAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>, debug: bool) -> Self {
         Self {
-            tcx: tcx,
+            tcx,
             graphs: HashMap::new(),
             debug,
         }
@@ -80,11 +80,11 @@ impl<'tcx> DataFlowAnalyzer<'tcx> {
     pub fn build_graphs(&mut self) {
         for local_def_id in self.tcx.iter_local_def_id() {
             let def_kind = self.tcx.def_kind(local_def_id);
-            if matches!(def_kind, DefKind::Fn) || matches!(def_kind, DefKind::AssocFn) {
-                if self.tcx.hir_maybe_body_owned_by(local_def_id).is_some() {
-                    let def_id = local_def_id.to_def_id();
-                    self.build_graph(def_id);
-                }
+            if (matches!(def_kind, DefKind::Fn) || matches!(def_kind, DefKind::AssocFn))
+                && self.tcx.hir_maybe_body_owned_by(local_def_id).is_some()
+            {
+                let def_id = local_def_id.to_def_id();
+                self.build_graph(def_id);
             }
         }
     }
@@ -98,10 +98,10 @@ impl<'tcx> DataFlowAnalyzer<'tcx> {
         let basic_blocks = &body.basic_blocks;
         for basic_block_data in basic_blocks.iter() {
             for statement in basic_block_data.statements.iter() {
-                graph.add_statm_to_graph(&statement);
+                graph.add_statm_to_graph(statement);
             }
             if let Some(terminator) = &basic_block_data.terminator {
-                graph.add_terminator_to_graph(&terminator);
+                graph.add_terminator_to_graph(terminator);
             }
         }
         for closure_id in graph.closures.iter() {
@@ -114,12 +114,12 @@ impl<'tcx> DataFlowAnalyzer<'tcx> {
         let dir_name = "DataflowGraph";
 
         Command::new("rm")
-            .args(&["-rf", dir_name])
+            .args(["-rf", dir_name])
             .output()
             .expect("Failed to remove directory.");
 
         Command::new("mkdir")
-            .args(&[dir_name])
+            .args([dir_name])
             .output()
             .expect("Failed to create directory.");
 
@@ -133,7 +133,7 @@ impl<'tcx> DataFlowAnalyzer<'tcx> {
                 .expect("Unable to write data.");
 
             Command::new("dot")
-                .args(&["-Tpng", &dot_file_name, "-o", &png_file_name])
+                .args(["-Tpng", &dot_file_name, "-o", &png_file_name])
                 .output()
                 .expect("Failed to execute Graphviz dot command.");
         }

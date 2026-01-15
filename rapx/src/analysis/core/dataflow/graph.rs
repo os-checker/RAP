@@ -14,6 +14,12 @@ use rustc_span::{DUMMY_SP, Span};
 
 use crate::{analysis::core::dataflow::*, utils::log::relative_pos_range};
 
+impl Default for GraphNode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GraphNode {
     pub fn new() -> Self {
         Self {
@@ -43,7 +49,7 @@ impl From<Graph> for DataFlowGraph {
         DataFlowGraph {
             nodes: graph.nodes,
             edges: graph.edges,
-            param_ret_deps: param_ret_deps,
+            param_ret_deps,
         }
     }
 }
@@ -267,14 +273,14 @@ impl Graph {
             }
             match func {
                 Operand::Constant(boxed_cnst) => {
-                    if let Const::Val(_, ty) = boxed_cnst.const_ {
-                        if let TyKind::FnDef(def_id, _) = ty.kind() {
-                            for op in args.iter() {
-                                //rustc version related
-                                self.add_operand(&op.node, dst);
-                            }
-                            self.nodes[dst].ops[seq] = NodeOp::Call(*def_id);
+                    if let Const::Val(_, ty) = boxed_cnst.const_
+                        && let TyKind::FnDef(def_id, _) = ty.kind()
+                    {
+                        for op in args.iter() {
+                            //rustc version related
+                            self.add_operand(&op.node, dst);
                         }
+                        self.nodes[dst].ops[seq] = NodeOp::Call(*def_id);
                     }
                 }
                 Operand::Move(_) => {
@@ -492,13 +498,13 @@ impl Graph {
     // Whether there exists dataflow between each parameter and the return value
     pub fn param_return_deps(&self) -> IndexVec<Local, bool> {
         let _0 = Local::from_usize(0);
-        let deps = (0..self.argc + 1) //the length is argc + 1, because _0 depends on _0 itself.
+
+        (0..self.argc + 1) //the length is argc + 1, because _0 depends on _0 itself.
             .map(|i| {
                 let _i = Local::from_usize(i);
                 self.is_connected(_i, _0)
             })
-            .collect();
-        deps
+            .collect()
     }
 
     // This function uses precedence traversal.
@@ -565,19 +571,17 @@ impl Graph {
     }
 
     pub fn get_upside_idx(&self, node_idx: Local, order: usize) -> Option<Local> {
-        if let Some(edge_idx) = self.nodes[node_idx].in_edges.get(order) {
-            Some(self.edges[*edge_idx].src)
-        } else {
-            None
-        }
+        self.nodes[node_idx]
+            .in_edges
+            .get(order)
+            .map(|edge_idx| self.edges[*edge_idx].src)
     }
 
     pub fn get_downside_idx(&self, node_idx: Local, order: usize) -> Option<Local> {
-        if let Some(edge_idx) = self.nodes[node_idx].out_edges.get(order) {
-            Some(self.edges[*edge_idx].dst)
-        } else {
-            None
-        }
+        self.nodes[node_idx]
+            .out_edges
+            .get(order)
+            .map(|edge_idx| self.edges[*edge_idx].dst)
     }
 
     // if strict is set to false, we return the first node that wraps the target span and at least one end overlaps
@@ -587,12 +591,10 @@ impl Graph {
                 if node.span == span {
                     return Some((node_idx, node));
                 }
-            } else {
-                if !relative_pos_range(node.span, span).eq(0..0)
-                    && (node.span.lo() == span.lo() || node.span.hi() == span.hi())
-                {
-                    return Some((node_idx, node));
-                }
+            } else if !relative_pos_range(node.span, span).eq(0..0)
+                && (node.span.lo() == span.lo() || node.span.hi() == span.hi())
+            {
+                return Some((node_idx, node));
             }
         }
         None

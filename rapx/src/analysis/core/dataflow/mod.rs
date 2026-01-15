@@ -82,10 +82,8 @@ impl fmt::Display for Arg2RetWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let arg2ret: &Arg2Ret = &self.0;
         for (local, depends) in arg2ret.iter_enumerated() {
-            if local.as_u32() > 0 {
-                if *depends {
-                    writeln!(f, "Argument {:?} ---> Return value _0", local)?;
-                }
+            if local.as_u32() > 0 && *depends {
+                writeln!(f, "Argument {:?} ---> Return value _0", local)?;
             }
         }
         Ok(())
@@ -111,20 +109,18 @@ impl fmt::Display for Arg2RetMapWrapper {
 impl Display for DataFlowGraphWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let graph = &self.0;
-        write!(
+        writeln!(
             f,
-            "Graph statistics: {} nodes, {} edges.\n",
+            "Graph statistics: {} nodes, {} edges.",
             graph.nodes.len(),
             graph.edges.len()
         )?;
         if graph.param_ret_deps.len() > 1 {
-            write!(f, "Return value dependencies: \n")?;
+            writeln!(f, "Return value dependencies: ")?;
         }
         for (node_idx, deps) in graph.param_ret_deps.iter_enumerated() {
-            if node_idx.as_u32() > 0 {
-                if *deps {
-                    write!(f, "Argument {:?} ---> Return value _0.\n", node_idx)?;
-                }
+            if node_idx.as_u32() > 0 && *deps {
+                writeln!(f, "Argument {:?} ---> Return value _0.", node_idx)?;
             }
         }
 
@@ -135,7 +131,7 @@ impl Display for DataFlowGraphWrapper {
                 .map(|edge_idx| graph.edges[*edge_idx].dst)
                 .collect();
             if !node_adj.is_empty() {
-                write!(f, "Node {:?} -> Node {:?}\n", node_idx, node_adj)?;
+                writeln!(f, "Node {:?} -> Node {:?}", node_idx, node_adj)?;
             }
         }
         Ok(())

@@ -64,7 +64,7 @@ impl<'tcx> Opt<'tcx> {
             return;
         }
 
-        let mut statistics = vec![0 as usize; 6];
+        let mut statistics = [0_usize; 6];
 
         dataflow.graphs.iter().for_each(|(_, graph)| {
             let mut bounds_check = BoundsCheck::new();
@@ -108,11 +108,11 @@ impl<'tcx> Opt<'tcx> {
         });
 
         let bug_cnt: usize = statistics.iter().sum();
-        let func_cnt: usize = dataflow.graphs.iter().count();
+        let func_cnt: usize = dataflow.graphs.len();
         let line_cnt: usize = dataflow
             .graphs
-            .iter()
-            .map(|(_, graph)| span_to_source_code(graph.span).lines().count())
+            .values()
+            .map(|graph| span_to_source_code(graph.span).lines().count())
             .sum();
         if bug_cnt > 0 {
             rap_warn!("Potential optimizations detected.");

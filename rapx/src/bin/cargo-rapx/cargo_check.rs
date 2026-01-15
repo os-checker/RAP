@@ -76,10 +76,8 @@ fn cargo_check(dir: &Utf8Path) {
 }
 
 fn cargo_clean(dir: &Utf8Path, really: bool) {
-    if really {
-        if let Err(err) = Command::new("cargo").arg("clean").current_dir(dir).output() {
-            rap_error_and_exit(format!("`cargo clean` exits unexpectedly:\n{err}"));
-        }
+    if really && let Err(err) = Command::new("cargo").arg("clean").current_dir(dir).output() {
+        rap_error_and_exit(format!("`cargo clean` exits unexpectedly:\n{err}"));
     }
 }
 

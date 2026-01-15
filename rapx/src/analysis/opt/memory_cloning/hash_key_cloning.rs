@@ -72,11 +72,11 @@ fn find_first_param_upside_clone(graph: &Graph, node: &GraphNode) -> Option<Loca
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == target_def_id {
-                    clone_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+            if let NodeOp::Call(def_id) = op
+                && *def_id == target_def_id
+            {
+                clone_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -100,15 +100,14 @@ fn find_hash_new_node(graph: &Graph, node: &GraphNode) -> Option<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.hashset_new.last_def_id()
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.hashset_new.last_def_id()
                     || *def_id == def_paths.hashmap_new.last_def_id()
                     || *def_id == def_paths.hashset_with.last_def_id()
-                    || *def_id == def_paths.hashmap_with.last_def_id()
-                {
-                    new_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+                    || *def_id == def_paths.hashmap_with.last_def_id())
+            {
+                new_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -170,15 +169,13 @@ impl OptCheck for HashKeyCloningCheck {
         };
         intravisit::walk_body(&mut hash_finder, body);
         for node in graph.nodes.iter() {
-            if hash_finder.record.contains(&node.span) {
-                if let Some(clone_node_idx) = find_first_param_upside_clone(graph, node) {
-                    if let Some(new_node_idx) = find_hash_new_node(graph, node) {
-                        if !graph.is_connected(new_node_idx, Local::from_usize(0)) {
-                            let clone_span = graph.nodes[clone_node_idx].span;
-                            self.record.push((clone_span, node.span));
-                        }
-                    }
-                }
+            if hash_finder.record.contains(&node.span)
+                && let Some(clone_node_idx) = find_first_param_upside_clone(graph, node)
+                && let Some(new_node_idx) = find_hash_new_node(graph, node)
+                && !graph.is_connected(new_node_idx, Local::from_usize(0))
+            {
+                let clone_span = graph.nodes[clone_node_idx].span;
+                self.record.push((clone_span, node.span));
             }
         }
     }

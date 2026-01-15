@@ -36,12 +36,11 @@ pub struct VecRemoveCheck {
 fn is_vec_insert_or_remove(node: &GraphNode) -> bool {
     let def_paths = DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.vec_remove.last_def_id()
-                || *def_id == def_paths.vec_insert.last_def_id()
-            {
-                return true;
-            }
+        if let NodeOp::Call(def_id) = op
+            && (*def_id == def_paths.vec_remove.last_def_id()
+                || *def_id == def_paths.vec_insert.last_def_id())
+        {
+            return true;
         }
     }
     false
@@ -49,10 +48,10 @@ fn is_vec_insert_or_remove(node: &GraphNode) -> bool {
 
 fn is_0_usize(node: &GraphNode) -> bool {
     for op in node.ops.iter() {
-        if let NodeOp::Const(desc, _) = op {
-            if desc.eq("0_usize") {
-                return true;
-            }
+        if let NodeOp::Const(desc, _) = op
+            && desc.eq("0_usize")
+        {
+            return true;
         }
     }
     false

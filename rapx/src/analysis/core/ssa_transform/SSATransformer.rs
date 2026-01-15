@@ -53,14 +53,14 @@ impl<'tcx> SSATransformer<'tcx> {
         for item in tcx.module_children(root_def_id) {
             // println!("Module child: {:?}", item.ident.name.as_str());
 
-            if item.ident.name.as_str() == "PhiPlaceholder" {
-                if let Some(def_id) = item.res.opt_def_id() {
-                    return Some(def_id);
-                }
+            if item.ident.name.as_str() == "PhiPlaceholder"
+                && let Some(def_id) = item.res.opt_def_id()
+            {
+                return Some(def_id);
             }
         }
         // print!("Phid\n");
-        return Some(root_def_id);
+        Some(root_def_id)
     }
     pub fn new(
         tcx: TyCtxt<'tcx>,
@@ -69,20 +69,20 @@ impl<'tcx> SSATransformer<'tcx> {
         essa_def_id: DefId,
         arg_count: usize,
     ) -> Self {
-        let cfg: HashMap<BasicBlock, Vec<BasicBlock>> = Self::extract_cfg_from_predecessors(&body);
+        let cfg: HashMap<BasicBlock, Vec<BasicBlock>> = Self::extract_cfg_from_predecessors(body);
 
         let dominators: Dominators<BasicBlock> = body.basic_blocks.dominators().clone();
 
-        let dom_tree: HashMap<BasicBlock, Vec<BasicBlock>> = Self::construct_dominance_tree(&body);
+        let dom_tree: HashMap<BasicBlock, Vec<BasicBlock>> = Self::construct_dominance_tree(body);
 
         let df: HashMap<BasicBlock, HashSet<BasicBlock>> =
-            Self::compute_dominance_frontier(&body, &dom_tree);
+            Self::compute_dominance_frontier(body, &dom_tree);
 
         let local_assign_blocks: HashMap<Local, HashSet<BasicBlock>> =
-            Self::map_locals_to_assign_blocks(&body);
+            Self::map_locals_to_assign_blocks(body);
         let local_defination_block: HashMap<Local, BasicBlock> =
-            Self::map_locals_to_definition_block(&body);
-        let len = body.local_decls.len() as usize;
+            Self::map_locals_to_definition_block(body);
+        let len = body.local_decls.len();
         let mut skipped = HashSet::new();
         if len > 0 {
             skipped.extend(arg_count + 1..len + 1);
@@ -99,13 +99,13 @@ impl<'tcx> SSATransformer<'tcx> {
             local_assign_blocks,
             reaching_def: HashMap::default(),
             local_index: len,
-            local_defination_block: local_defination_block,
-            skipped: skipped,
+            local_defination_block,
+            skipped,
             phi_index: HashMap::default(),
             phi_statements: HashMap::default(),
             essa_statements: HashMap::default(),
             phi_def_id: ssa_def_id,
-            essa_def_id: essa_def_id,
+            essa_def_id,
             ref_local_map: HashMap::default(),
             places_map: HashMap::default(),
             ssa_locals_map: HashMap::default(),
@@ -121,30 +121,23 @@ impl<'tcx> SSATransformer<'tcx> {
 
         for (bb, block_data) in body.basic_blocks.iter_enumerated() {
             for statement in &block_data.statements {
-                match &statement.kind {
-                    StatementKind::Assign(box (place, _)) => {
-                        if let Some(local) = place.as_local() {
-                            if local.as_u32() == 0 {
-                                continue; // Skip the return place
-                            }
-                            local_to_block_map.entry(local).or_insert(bb);
-                        }
+                if let StatementKind::Assign(box (place, _)) = &statement.kind
+                    && let Some(local) = place.as_local()
+                {
+                    if local.as_u32() == 0 {
+                        continue; // Skip the return place
                     }
-                    _ => {}
+                    local_to_block_map.entry(local).or_insert(bb);
                 }
             }
-            if let Some(terminator) = &block_data.terminator {
-                match &terminator.kind {
-                    TerminatorKind::Call { destination, .. } => {
-                        if let Some(local) = destination.as_local() {
-                            if local.as_u32() == 0 {
-                                continue; // Skip the return place
-                            }
-                            local_to_block_map.entry(local).or_insert(bb);
-                        }
-                    }
-                    _ => {}
+            if let Some(terminator) = &block_data.terminator
+                && let TerminatorKind::Call { destination, .. } = &terminator.kind
+                && let Some(local) = destination.as_local()
+            {
+                if local.as_u32() == 0 {
+                    continue; // Skip the return place
                 }
+                local_to_block_map.entry(local).or_insert(bb);
             }
         }
 
@@ -214,17 +207,14 @@ impl<'tcx> SSATransformer<'tcx> {
                     if local.as_u32() == 0 {
                         continue; // Skip the return place
                     }
-                    local_to_blocks
-                        .entry(local)
-                        .or_insert_with(HashSet::new)
-                        .insert(bb);
+                    local_to_blocks.entry(local).or_default().insert(bb);
                 }
             }
         }
         for arg in body.args_iter() {
             local_to_blocks
                 .entry(arg)
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(BasicBlock::from_u32(0)); // Assuming arg block is 0
         }
         local_to_blocks
@@ -292,18 +282,10 @@ impl<'tcx> SSATransformer<'tcx> {
 
     pub fn is_phi_statement(&self, statement: &Statement<'tcx>) -> bool {
         let phi_stmt = statement as *const Statement<'tcx>;
-        if self.phi_statements.contains_key(&phi_stmt) {
-            return true;
-        } else {
-            return false;
-        }
+        self.phi_statements.contains_key(&phi_stmt)
     }
     pub fn is_essa_statement(&self, statement: &Statement<'tcx>) -> bool {
         let essa_stmt = statement as *const Statement<'tcx>;
-        if self.essa_statements.contains_key(&essa_stmt) {
-            return true;
-        } else {
-            return false;
-        }
+        self.essa_statements.contains_key(&essa_stmt)
     }
 }

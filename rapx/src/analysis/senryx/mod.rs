@@ -140,10 +140,8 @@ impl<'tcx> SenryxCheck<'tcx> {
                     if chain.len() > 1 {
                         return true;
                     }
-                    if chain.len() == 1 {
-                        if check_safety(self.tcx, def_id) == Safety::Unsafe {
-                            return true;
-                        }
+                    if chain.len() == 1 && check_safety(self.tcx, def_id) == Safety::Unsafe {
+                        return true;
                     }
                     false
                 })
@@ -152,11 +150,12 @@ impl<'tcx> SenryxCheck<'tcx> {
             // Collect last nodes that are relevant for further inspection
             let mut last = true;
             for chain in &valid_chains {
-                if let Some(last_node) = chain.last() {
-                    if !last_node.contains("intrinsic") && !last_node.contains("aarch64") {
-                        last_nodes.insert(last_node.clone());
-                        last = false;
-                    }
+                if let Some(last_node) = chain.last()
+                    && !last_node.contains("intrinsic")
+                    && !last_node.contains("aarch64")
+                {
+                    last_nodes.insert(last_node.clone());
+                    last = false;
                 }
             }
             if last {
@@ -303,20 +302,15 @@ impl<'tcx> SenryxCheck<'tcx> {
                 call_source: _,
                 fn_span: _,
             } = terminator.kind
+                && let Operand::Constant(c) = func
+                && let ty::FnDef(id, ..) = c.ty().kind()
             {
-                match func {
-                    Operand::Constant(c) => {
-                        if let ty::FnDef(id, ..) = c.ty().kind() {
-                            // If the callee has direct annotations, extend results.
-                            if !get_sp(self.tcx, *id).is_empty() {
-                                results.extend(get_sp(self.tcx, *id));
-                            } else {
-                                // Otherwise, recurse into callee's annotations.
-                                results.extend(self.get_annotation(*id));
-                            }
-                        }
-                    }
-                    _ => {}
+                // If the callee has direct annotations, extend results.
+                if !get_sp(self.tcx, *id).is_empty() {
+                    results.extend(get_sp(self.tcx, *id));
+                } else {
+                    // Otherwise, recurse into callee's annotations.
+                    results.extend(self.get_annotation(*id));
                 }
             }
         }

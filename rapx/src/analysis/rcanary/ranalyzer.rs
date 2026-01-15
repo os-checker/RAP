@@ -23,21 +23,11 @@ pub type MirGraph = HashMap<DefId, Graph>;
 pub type ToPo = Vec<usize>;
 pub type Edges = Vec<Vec<usize>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Graph {
     e: Edges,
     pre: Edges,
     topo: ToPo,
-}
-
-impl Default for Graph {
-    fn default() -> Self {
-        Self {
-            e: Vec::default(),
-            pre: Vec::default(),
-            topo: Vec::default(),
-        }
-    }
 }
 
 impl Graph {
@@ -121,7 +111,7 @@ impl<'tcx, 'o, 'a> RcxMut<'tcx, 'o, 'a> for FlowAnalysis<'tcx, 'a> {
 
     #[inline(always)]
     fn rcx_mut(&'o mut self) -> &'o mut rCanary<'tcx> {
-        &mut self.rcx
+        self.rcx
     }
 
     #[inline(always)]
@@ -517,10 +507,7 @@ pub enum Z3GoalDisplay {
 }
 
 pub fn is_z3_goal_verbose() -> bool {
-    match env::var_os("Z3") {
-        Some(_) => true,
-        _ => false,
-    }
+    env::var_os("Z3").is_some()
 }
 
 #[derive(Debug, Copy, Clone, Hash)]
@@ -530,8 +517,5 @@ pub enum IcxSliceDisplay {
 }
 
 pub fn is_icx_slice_verbose() -> bool {
-    match env::var_os("ICX_SLICE") {
-        Some(_) => true,
-        _ => false,
-    }
+    env::var_os("ICX_SLICE").is_some()
 }

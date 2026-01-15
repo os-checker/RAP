@@ -46,8 +46,8 @@ impl<'tcx> OwnedHeapAnalysis for OwnedHeapAnalyzer<'tcx> {
 pub(crate) fn copy_ty_context(tc: &TyContext) -> TyContext {
     match tc {
         TyContext::LocalDecl { local, source_info } => TyContext::LocalDecl {
-            local: local.clone(),
-            source_info: source_info.clone(),
+            local: *local,
+            source_info: *source_info,
         },
         _ => unreachable!(),
     }
@@ -132,7 +132,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
         #[inline(always)]
         fn start_channel<M>(mut method: M, v_did: &Vec<DefId>)
         where
-            M: FnMut(DefId) -> (),
+            M: FnMut(DefId),
         {
             for did in v_did {
                 method(*did);
@@ -169,7 +169,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
             }
         }
 
-        let dids: Vec<DefId> = self.adt_recorder.iter().map(|did| *did).collect();
+        let dids: Vec<DefId> = self.adt_recorder.iter().copied().collect();
 
         start_channel(|did| self.extract_raw_generic(did), &dids);
         start_channel(|did| self.extract_raw_generic_prop(did), &dids);
@@ -261,7 +261,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
         let mut v_res = self.adt_heap_mut().get_mut(&did).unwrap().clone();
 
         for (variant_index, variant) in adt_def.variants().iter().enumerate() {
-            let res = v_res[variant_index as usize].clone();
+            let res = v_res[variant_index].clone();
 
             let mut raw_generic_prop = IsolatedParamPropagation::new(
                 self.tcx,
@@ -274,8 +274,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
                 let field_ty = field.ty(self.tcx, substs);
                 let _ = field_ty.visit_with(&mut raw_generic_prop);
             }
-            v_res[variant_index as usize] =
-                (OwnedHeap::False, raw_generic_prop.record_mut().clone());
+            v_res[variant_index] = (OwnedHeap::False, raw_generic_prop.record_mut().clone());
         }
 
         self.adt_heap_mut().insert(did, v_res);
@@ -328,7 +327,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
                                                         break;
                                                     }
                                                 }
-                                                if has_ptr == false {
+                                                if !has_ptr {
                                                     return;
                                                 }
                                             }
@@ -366,7 +365,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
         let mut v_res = self.adt_heap_mut().get_mut(&did).unwrap().clone();
 
         for (variant_index, variant) in adt_def.variants().iter().enumerate() {
-            let res = v_res[variant_index as usize].clone();
+            let res = v_res[variant_index].clone();
 
             let mut heap_prop = HeapPropagation::new(self.tcx, res.0, self.adt_heap());
 
@@ -374,7 +373,7 @@ impl<'tcx> OwnedHeapAnalyzer<'tcx> {
                 let field_ty = field.ty(self.tcx, substs);
                 let _ = field_ty.visit_with(&mut heap_prop);
             }
-            v_res[variant_index as usize].0 = heap_prop.heap();
+            v_res[variant_index].0 = heap_prop.heap();
         }
 
         self.adt_heap_mut().insert(did, v_res);
@@ -395,18 +394,16 @@ impl<'tcx> Visitor<'tcx> for OwnedHeapAnalyzer<'tcx> {
     fn visit_basic_block_data(&mut self, _block: BasicBlock, data: &BasicBlockData<'tcx>) {
         let term = data.terminator();
         match &term.kind {
-            TerminatorKind::Call { func, .. } => match func {
-                Operand::Constant(constant) => match constant.ty().kind() {
-                    ty::FnDef(def_id, ..) => {
-                        if self.tcx.is_mir_available(*def_id) && self.fn_set_mut().insert(*def_id) {
-                            let body = self.tcx.instance_mir(Item(*def_id));
-                            self.visit_body(body);
-                        }
-                    }
-                    _ => (),
-                },
-                _ => (),
-            },
+            TerminatorKind::Call { func, .. } => {
+                if let Operand::Constant(constant) = func
+                    && let ty::FnDef(def_id, ..) = constant.ty().kind()
+                    && self.tcx.is_mir_available(*def_id)
+                    && self.fn_set_mut().insert(*def_id)
+                {
+                    let body = self.tcx.instance_mir(Item(*def_id));
+                    self.visit_body(body);
+                }
+            }
             _ => (),
         }
     }
@@ -445,7 +442,7 @@ impl<'tcx> Visitor<'tcx> for OwnedHeapAnalyzer<'tcx> {
                     self.visit_ty(field, copy_ty_context(&ty_context));
                 }
             }
-            _ => return,
+            _ => (),
         }
     }
 
@@ -501,7 +498,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for IsolatedParamPropagation<'tcx, 'a> 
     fn visit_ty(&mut self, ty: Ty<'tcx>) -> Self::Result {
         match ty.kind() {
             TyKind::Adt(adtdef, substs) => {
-                if substs.len() == 0 {
+                if substs.is_empty() {
                     return ControlFlow::Break(());
                 }
 
@@ -524,8 +521,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for IsolatedParamPropagation<'tcx, 'a> 
                             if !raw_generic_field_subst.contains_param() {
                                 continue;
                             }
-                            map_raw_generic_field_subst
-                                .insert(index as usize, raw_generic_field_subst);
+                            map_raw_generic_field_subst.insert(index, raw_generic_field_subst);
                         }
                     }
                 }
@@ -534,7 +530,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for IsolatedParamPropagation<'tcx, 'a> 
                 }
 
                 let get_ans = self.heap().get(&adtdef.did()).unwrap();
-                if get_ans.len() == 0 {
+                if get_ans.is_empty() {
                     return ControlFlow::Break(());
                 }
                 let get_ans = get_ans[0].clone();
@@ -586,17 +582,14 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for HeapPropagation<'tcx, 'a> {
                 }
 
                 let get_ans = self.heap_res().get(&adtdef.did()).unwrap();
-                if get_ans.len() == 0 {
+                if get_ans.is_empty() {
                     return ControlFlow::Break(());
                 }
                 let get_ans = get_ans[0].clone();
 
-                match get_ans.0 {
-                    OwnedHeap::True => {
-                        self.heap = OwnedHeap::True;
-                        return ControlFlow::Break(());
-                    }
-                    _ => (),
+                if get_ans.0 == OwnedHeap::True {
+                    self.heap = OwnedHeap::True;
+                    return ControlFlow::Break(());
                 };
 
                 for field in adtdef.all_fields() {
@@ -669,7 +662,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for DefaultOwnership<'tcx, 'a> {
                 let get_ans = self.heap().get(&adtdef.did()).unwrap();
 
                 // handle the secene of Zero Sized Types
-                if get_ans.len() == 0 {
+                if get_ans.is_empty() {
                     return ControlFlow::Break(());
                 }
                 let (unit_res, generic_list) = get_ans[0].clone();
@@ -681,7 +674,7 @@ impl<'tcx, 'a> TypeVisitor<TyCtxt<'tcx>> for DefaultOwnership<'tcx, 'a> {
                     }
                     OwnedHeap::False => {
                         for (index, each_generic) in generic_list.iter().enumerate() {
-                            if *each_generic == false {
+                            if !*each_generic {
                                 continue;
                             } else {
                                 let subset_ty = substs[index].expect_ty();
@@ -722,7 +715,7 @@ pub struct TyWithIndex<'tcx>(pub Option<(usize, &'tcx TyKind<'tcx>, Option<usize
 impl<'tcx> TyWithIndex<'tcx> {
     pub fn new(ty: Ty<'tcx>, vidx: Option<VariantIdx>) -> Self {
         match &ty.kind() {
-            TyKind::Tuple(list) => TyWithIndex(Some((list.len(), &ty.kind(), None, true))),
+            TyKind::Tuple(list) => TyWithIndex(Some((list.len(), ty.kind(), None, true))),
             TyKind::Adt(adtdef, ..) => {
                 if adtdef.is_enum() {
                     if vidx.is_none() {
@@ -730,14 +723,14 @@ impl<'tcx> TyWithIndex<'tcx> {
                     }
                     let idx = vidx.unwrap();
                     let len = adtdef.variants()[idx].fields.len();
-                    TyWithIndex(Some((len, &ty.kind(), Some(idx.index()), true)))
+                    TyWithIndex(Some((len, ty.kind(), Some(idx.index()), true)))
                 } else {
                     let len = adtdef.variants()[VariantIdx::from_usize(0)].fields.len();
-                    TyWithIndex(Some((len, &ty.kind(), None, true)))
+                    TyWithIndex(Some((len, ty.kind(), None, true)))
                 }
             }
             TyKind::Array(..) | TyKind::Param(..) | TyKind::RawPtr(..) | TyKind::Ref(..) => {
-                TyWithIndex(Some((1, &ty.kind(), None, true)))
+                TyWithIndex(Some((1, ty.kind(), None, true)))
             }
             TyKind::Bool
             | TyKind::Char
@@ -745,7 +738,7 @@ impl<'tcx> TyWithIndex<'tcx> {
             | TyKind::Uint(..)
             | TyKind::Float(..)
             | TyKind::Str
-            | TyKind::Slice(..) => TyWithIndex(Some((1, &ty.kind(), None, false))),
+            | TyKind::Slice(..) => TyWithIndex(Some((1, ty.kind(), None, false))),
             _ => TyWithIndex(None),
         }
     }
@@ -1026,7 +1019,7 @@ impl<'tcx, 'a> DefaultOwnership<'tcx, 'a> {
     }
 
     pub fn is_param_true(&self) -> bool {
-        self.param == true
+        self.param
     }
 
     pub fn get_ptr(&self) -> bool {
@@ -1038,7 +1031,7 @@ impl<'tcx, 'a> DefaultOwnership<'tcx, 'a> {
     }
 
     pub fn is_ptr_true(&self) -> bool {
-        self.ptr == true
+        self.ptr
     }
 
     pub fn heap(&self) -> &'a OHAResultMap {
@@ -1084,10 +1077,7 @@ impl<'tcx> FindPtr<'tcx> {
 }
 
 pub fn is_display_verbose() -> bool {
-    match env::var_os("ADT_DISPLAY") {
-        Some(_) => true,
-        _ => false,
-    }
+    env::var_os("ADT_DISPLAY").is_some()
 }
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq, Default)]
@@ -1096,7 +1086,7 @@ pub struct IndexedTy<'tcx>(pub Option<(usize, &'tcx TyKind<'tcx>, Option<usize>,
 impl<'tcx> IndexedTy<'tcx> {
     pub fn new(ty: Ty<'tcx>, vidx: Option<VariantIdx>) -> Self {
         match &ty.kind() {
-            TyKind::Tuple(list) => IndexedTy(Some((list.len(), &ty.kind(), None, true))),
+            TyKind::Tuple(list) => IndexedTy(Some((list.len(), ty.kind(), None, true))),
             TyKind::Adt(adtdef, ..) => {
                 if adtdef.is_enum() {
                     if vidx.is_none() {
@@ -1104,14 +1094,14 @@ impl<'tcx> IndexedTy<'tcx> {
                     }
                     let idx = vidx.unwrap();
                     let len = adtdef.variants()[idx].fields.len();
-                    IndexedTy(Some((len, &ty.kind(), Some(idx.index()), true)))
+                    IndexedTy(Some((len, ty.kind(), Some(idx.index()), true)))
                 } else {
                     let len = adtdef.variants()[VariantIdx::from_usize(0)].fields.len();
-                    IndexedTy(Some((len, &ty.kind(), None, true)))
+                    IndexedTy(Some((len, ty.kind(), None, true)))
                 }
             }
             TyKind::Array(..) | TyKind::Param(..) | TyKind::RawPtr(..) | TyKind::Ref(..) => {
-                IndexedTy(Some((1, &ty.kind(), None, true)))
+                IndexedTy(Some((1, ty.kind(), None, true)))
             }
             TyKind::Bool
             | TyKind::Char
@@ -1119,7 +1109,7 @@ impl<'tcx> IndexedTy<'tcx> {
             | TyKind::Uint(..)
             | TyKind::Float(..)
             | TyKind::Str
-            | TyKind::Slice(..) => IndexedTy(Some((1, &ty.kind(), None, false))),
+            | TyKind::Slice(..) => IndexedTy(Some((1, ty.kind(), None, false))),
             _ => IndexedTy(None),
         }
     }
@@ -1145,6 +1135,12 @@ pub struct OwnershipLayoutResult {
     param: bool,
     requirement: bool,
     owned: bool,
+}
+
+impl Default for OwnershipLayoutResult {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl OwnershipLayoutResult {
@@ -1174,7 +1170,7 @@ impl OwnershipLayoutResult {
     }
 
     pub fn is_param_true(&self) -> bool {
-        self.param == true
+        self.param
     }
 
     pub fn get_requirement(&self) -> bool {
@@ -1186,7 +1182,7 @@ impl OwnershipLayoutResult {
     }
 
     pub fn is_requirement_true(&self) -> bool {
-        self.requirement == true
+        self.requirement
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1194,7 +1190,7 @@ impl OwnershipLayoutResult {
     }
 
     pub fn is_owned(&self) -> bool {
-        self.owned == true
+        self.owned
     }
 
     pub fn set_owned(&mut self, o: bool) {

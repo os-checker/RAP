@@ -133,7 +133,6 @@ impl<'tcx> MopGraph<'tcx> {
         self.alias_bbcall(self.blocks[bb_idx].scc.enter, fn_map, recursion_set);
         if cur_block.next.is_empty() {
             self.merge_results();
-            return;
         }
     }
 
@@ -178,11 +177,11 @@ impl<'tcx> MopGraph<'tcx> {
                             rap_debug!("value_idx: {:?}", value_idx);
                             match place_ty.ty.kind() {
                                 TyKind::Bool => {
-                                    if let Some(constant) = self.constants.get(&value_idx) {
-                                        if *constant != usize::MAX {
-                                            single_target = true;
-                                            sw_val = *constant;
-                                        }
+                                    if let Some(constant) = self.constants.get(&value_idx)
+                                        && *constant != usize::MAX
+                                    {
+                                        single_target = true;
+                                        sw_val = *constant;
                                     }
                                     path_discr_id = value_idx;
                                     sw_targets = Some(targets.clone());
@@ -191,11 +190,11 @@ impl<'tcx> MopGraph<'tcx> {
                                     if let Some(father) =
                                         self.discriminants.get(&self.values[value_idx].local)
                                     {
-                                        if let Some(constant) = self.constants.get(father) {
-                                            if *constant != usize::MAX {
-                                                single_target = true;
-                                                sw_val = *constant;
-                                            }
+                                        if let Some(constant) = self.constants.get(father)
+                                            && *constant != usize::MAX
+                                        {
+                                            single_target = true;
+                                            sw_val = *constant;
                                         }
                                         if self.values[value_idx].local == value_idx {
                                             path_discr_id = *father;
@@ -383,7 +382,7 @@ impl<'tcx> MopGraph<'tcx> {
                 "Remove path_constraints {:?}, because it has been reassigned.",
                 local
             );
-            path_constraints.remove(&local);
+            path_constraints.remove(local);
         }
 
         // Find the pathes of inner scc recursively;

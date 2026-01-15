@@ -26,11 +26,11 @@ impl DefPaths {
         let no_std = NO_STD.lock().unwrap();
         if *no_std {
             Self {
-                vec_extend_from_slice: DefPath::new("alloc::vec::Vec::extend_from_slice", &tcx),
+                vec_extend_from_slice: DefPath::new("alloc::vec::Vec::extend_from_slice", tcx),
             }
         } else {
             Self {
-                vec_extend_from_slice: DefPath::new("std::vec::Vec::extend_from_slice", &tcx),
+                vec_extend_from_slice: DefPath::new("std::vec::Vec::extend_from_slice", tcx),
             }
         }
     }
@@ -43,10 +43,10 @@ pub struct BoundsExtendCheck {
 fn is_extend_from_slice(node: &GraphNode) -> bool {
     let def_paths = DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.vec_extend_from_slice.last_def_id() {
-                return true;
-            }
+        if let NodeOp::Call(def_id) = op
+            && *def_id == def_paths.vec_extend_from_slice.last_def_id()
+        {
+            return true;
         }
     }
     false

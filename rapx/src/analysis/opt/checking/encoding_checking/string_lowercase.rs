@@ -41,7 +41,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for LowercaseFinder<'tcx> {
                 .typeck_results
                 .type_dependent_def_id(ex.hir_id)
                 .unwrap();
-            let target_def_id = (&DEFPATHS.get().unwrap()).string_to_lowercase.last_def_id();
+            let target_def_id = DEFPATHS.get().unwrap().string_to_lowercase.last_def_id();
             if def_id == target_def_id {
                 self.record.push(span);
             }

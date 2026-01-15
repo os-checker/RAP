@@ -24,11 +24,9 @@ impl<'tcx> GenericChecker<'tcx> {
                 let generic_name = trait_pred.self_ty().skip_binder().to_string();
                 let satisfied_ty_set = satisfied_ty_map_for_generic
                     .entry(generic_name.clone())
-                    .or_insert_with(|| HashSet::new());
+                    .or_default();
                 let trait_name = tcx.def_path_str(trait_def_id);
-                let trait_bnd_set = trait_bnd_map_for_generic
-                    .entry(generic_name)
-                    .or_insert_with(|| HashSet::new());
+                let trait_bnd_set = trait_bnd_map_for_generic.entry(generic_name).or_default();
                 trait_bnd_set.insert(trait_name.clone());
 
                 // for each implementation
@@ -92,9 +90,7 @@ impl<'tcx> GenericChecker<'tcx> {
         // to avoid messing up with build type manually
         // we just clear the satisfied ty set
         for (key, satisfied_ty_set) in &mut satisfied_ty_map_for_generic {
-            let trait_bnd_set = trait_bnd_map_for_generic
-                .entry(key.clone())
-                .or_insert_with(|| HashSet::new());
+            let trait_bnd_set = trait_bnd_map_for_generic.entry(key.clone()).or_default();
             if trait_bnd_set.is_subset(&std_trait_set) {
                 satisfied_ty_set.clear();
             }

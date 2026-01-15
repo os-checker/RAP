@@ -199,7 +199,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     .nodes
                     .clone();
                 // also analyze basic blocks that belong to dominated SCCs
-                if tem_basic_blocks.len() > 0 {
+                if !tem_basic_blocks.is_empty() {
                     for sub_block in tem_basic_blocks {
                         self.path_analyze_block(
                             &body.basic_blocks[BasicBlock::from_usize(*sub_block)].clone(),
@@ -239,13 +239,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         for statement in block.statements.iter() {
             self.path_analyze_statement(statement, path_index);
         }
-        self.path_analyze_terminator(
-            &block.terminator(),
-            path_index,
-            bb_index,
-            next_block,
-            fn_map,
-        );
+        self.path_analyze_terminator(block.terminator(), path_index, bb_index, next_block, fn_map);
     }
 
     /// Retrieve all paths and optional range-based constraints for this function.
@@ -288,17 +282,15 @@ impl<'tcx> BodyVisitor<'tcx> {
             StatementKind::Assign(box (ref lplace, ref rvalue)) => {
                 self.path_analyze_assign(lplace, rvalue, _path_index);
             }
-            StatementKind::Intrinsic(box ref intrinsic) => match intrinsic {
-                mir::NonDivergingIntrinsic::CopyNonOverlapping(cno) => {
-                    if cno.src.place().is_some() && cno.dst.place().is_some() {
-                        let _src_pjc_local =
-                            self.handle_proj(true, cno.src.place().unwrap().clone());
-                        let _dst_pjc_local =
-                            self.handle_proj(true, cno.dst.place().unwrap().clone());
-                    }
+            StatementKind::Intrinsic(box ref intrinsic) => {
+                if let mir::NonDivergingIntrinsic::CopyNonOverlapping(cno) = intrinsic
+                    && cno.src.place().is_some()
+                    && cno.dst.place().is_some()
+                {
+                    let _src_pjc_local = self.handle_proj(true, cno.src.place().unwrap());
+                    let _dst_pjc_local = self.handle_proj(true, cno.dst.place().unwrap());
                 }
-                _ => {}
-            },
+            }
             StatementKind::StorageDead(local) => {}
             _ => {}
         }
@@ -311,7 +303,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         rvalue: &Rvalue<'tcx>,
         path_index: usize,
     ) {
-        let lpjc_local = self.handle_proj(false, lplace.clone());
+        let lpjc_local = self.handle_proj(false, *lplace);
         match rvalue {
             Rvalue::Use(op) => {
                 if let Some(ana_op) = self.lift_operand(op) {
@@ -323,11 +315,11 @@ impl<'tcx> BodyVisitor<'tcx> {
                 }
                 match op {
                     Operand::Move(rplace) => {
-                        let rpjc_local = self.handle_proj(true, rplace.clone());
+                        let rpjc_local = self.handle_proj(true, *rplace);
                         self.chains.merge(lpjc_local, rpjc_local);
                     }
                     Operand::Copy(rplace) => {
-                        let rpjc_local = self.handle_proj(true, rplace.clone());
+                        let rpjc_local = self.handle_proj(true, *rplace);
                         self.chains.copy_node(lpjc_local, rpjc_local);
                     }
                     _ => {}
@@ -335,13 +327,13 @@ impl<'tcx> BodyVisitor<'tcx> {
             }
             Rvalue::Repeat(op, _const) => match op {
                 Operand::Move(rplace) | Operand::Copy(rplace) => {
-                    let _rpjc_local = self.handle_proj(true, rplace.clone());
+                    let _rpjc_local = self.handle_proj(true, *rplace);
                 }
                 _ => {}
             },
             Rvalue::Ref(_, _, rplace) | Rvalue::RawPtr(_, rplace) => {
                 // Recording that the left-hand side is a reference to right-hand side.
-                let rpjc_local = self.handle_proj(true, rplace.clone());
+                let rpjc_local = self.handle_proj(true, *rplace);
                 self.record_value_def(lpjc_local, SymbolicDef::Ref(rpjc_local));
                 self.chains.point(lpjc_local, rpjc_local);
             }
@@ -359,7 +351,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                 }
                 match op {
                     Operand::Move(rplace) | Operand::Copy(rplace) => {
-                        let rpjc_local = self.handle_proj(true, rplace.clone());
+                        let rpjc_local = self.handle_proj(true, *rplace);
                         let r_point_to = self.chains.get_point_to_id(rpjc_local);
                         if r_point_to == rpjc_local {
                             self.chains.merge(lpjc_local, rpjc_local);
@@ -376,15 +368,15 @@ impl<'tcx> BodyVisitor<'tcx> {
                     (self.lift_operand(op1), self.lift_operand(op2))
                 {
                     // Handle pointer offset operations specially
-                    if *bin_op == BinOp::Offset {
-                        if let AnaOperand::Local(base) = ana_op1 {
-                            let base_ty = self.get_ptr_pointee_layout(base);
-                            self.record_value_def(
-                                lpjc_local,
-                                SymbolicDef::PtrOffset(*bin_op, base, ana_op2, base_ty),
-                            );
-                            return;
-                        }
+                    if *bin_op == BinOp::Offset
+                        && let AnaOperand::Local(base) = ana_op1
+                    {
+                        let base_ty = self.get_ptr_pointee_layout(base);
+                        self.record_value_def(
+                            lpjc_local,
+                            SymbolicDef::PtrOffset(*bin_op, base, ana_op2, base_ty),
+                        );
+                        return;
                     }
                     // Handle other binary operations
                     let def = match (ana_op1.clone(), ana_op2) {
@@ -407,13 +399,12 @@ impl<'tcx> BodyVisitor<'tcx> {
                     } else if let (AnaOperand::Const(c), AnaOperand::Local(l)) = (
                         self.lift_operand(op1).unwrap(),
                         self.lift_operand(op2).unwrap(),
-                    ) {
-                        if matches!(bin_op, BinOp::Add | BinOp::Mul | BinOp::Eq) {
-                            self.record_value_def(
-                                lpjc_local,
-                                SymbolicDef::Binary(*bin_op, l, AnaOperand::Const(c)),
-                            );
-                        }
+                    ) && matches!(bin_op, BinOp::Add | BinOp::Mul | BinOp::Eq)
+                    {
+                        self.record_value_def(
+                            lpjc_local,
+                            SymbolicDef::Binary(*bin_op, l, AnaOperand::Const(c)),
+                        );
                     }
                 }
             }
@@ -452,12 +443,12 @@ impl<'tcx> BodyVisitor<'tcx> {
             },
             Rvalue::ShallowInitBox(op, _ty) => match op {
                 Operand::Move(rplace) | Operand::Copy(rplace) => {
-                    let _rpjc_local = self.handle_proj(true, rplace.clone());
+                    let _rpjc_local = self.handle_proj(true, *rplace);
                 }
                 _ => {}
             },
             Rvalue::CopyForDeref(p) => {
-                let op = Operand::Copy(p.clone());
+                let op = Operand::Copy(*p);
                 if let Some(ana_op) = self.lift_operand(&op) {
                     let def = match ana_op {
                         AnaOperand::Local(src) => SymbolicDef::Use(src),
@@ -472,13 +463,12 @@ impl<'tcx> BodyVisitor<'tcx> {
 
     /// Get the layout of the pointee type of a pointer or reference.
     pub fn get_ptr_pointee_layout(&self, ptr_local: usize) -> PlaceTy<'tcx> {
-        if let Some(node) = self.chains.get_var_node(ptr_local) {
-            if let Some(ty) = node.ty {
-                if is_ptr(ty) || is_ref(ty) {
-                    let pointee = get_pointee(ty);
-                    return self.visit_ty_and_get_layout(pointee);
-                }
-            }
+        if let Some(node) = self.chains.get_var_node(ptr_local)
+            && let Some(ty) = node.ty
+            && (is_ptr(ty) || is_ref(ty))
+        {
+            let pointee = get_pointee(ty);
+            return self.visit_ty_and_get_layout(pointee);
         }
         PlaceTy::Unknown
     }
@@ -507,25 +497,25 @@ impl<'tcx> BodyVisitor<'tcx> {
                 call_source: _,
                 fn_span,
             } => {
-                if let Operand::Constant(func_constant) = func {
-                    if let ty::FnDef(callee_def_id, raw_list) = func_constant.const_.ty().kind() {
-                        let mut mapping = FxHashMap::default();
-                        self.get_generic_mapping(raw_list.as_slice(), callee_def_id, &mut mapping);
-                        rap_debug!(
-                            "func {:?}, generic type mapping {:?}",
-                            callee_def_id,
-                            mapping
-                        );
-                        self.handle_call(
-                            dst_place,
-                            callee_def_id,
-                            args,
-                            path_index,
-                            fn_map,
-                            *fn_span,
-                            mapping,
-                        );
-                    }
+                if let Operand::Constant(func_constant) = func
+                    && let ty::FnDef(callee_def_id, raw_list) = func_constant.const_.ty().kind()
+                {
+                    let mut mapping = FxHashMap::default();
+                    self.get_generic_mapping(raw_list.as_slice(), callee_def_id, &mut mapping);
+                    rap_debug!(
+                        "func {:?}, generic type mapping {:?}",
+                        callee_def_id,
+                        mapping
+                    );
+                    self.handle_call(
+                        dst_place,
+                        callee_def_id,
+                        args,
+                        path_index,
+                        fn_map,
+                        *fn_span,
+                        mapping,
+                    );
                 }
             }
             TerminatorKind::Drop {
@@ -559,7 +549,7 @@ impl<'tcx> BodyVisitor<'tcx> {
     pub fn get_ty_by_place(&self, p: usize) -> Ty<'tcx> {
         let body = self.tcx.optimized_mir(self.def_id);
         let locals = body.local_decls.clone();
-        return locals[Local::from(p)].ty;
+        locals[Local::from(p)].ty
     }
 
     /// Update field state graph from an inter-procedural result node.
@@ -583,16 +573,14 @@ impl<'tcx> BodyVisitor<'tcx> {
                 has_default: _,
                 synthetic: _,
             } = param.kind
+                && let Some(ty) = raw_list.get(param.index as usize)
+                && let GenericArgKind::Type(actual_ty) = (*ty).kind()
             {
-                if let Some(ty) = raw_list.get(param.index as usize) {
-                    if let GenericArgKind::Type(actual_ty) = (*ty).kind() {
-                        let param_name = param.name.to_string();
-                        generic_mapping.insert(param_name, actual_ty);
-                    }
-                }
+                let param_name = param.name.to_string();
+                generic_mapping.insert(param_name, actual_ty);
             }
         }
-        if generics.own_params.len() == 0 && generics.parent.is_some() {
+        if generics.own_params.is_empty() && generics.parent.is_some() {
             let parent_def_id = generics.parent.unwrap();
             self.get_generic_mapping(raw_list, &parent_def_id, generic_mapping);
         }
@@ -655,10 +643,10 @@ impl<'tcx> BodyVisitor<'tcx> {
         dst_place: &Place<'tcx>,
         args: &Box<[Spanned<Operand>]>,
     ) {
-        if args.len() == 0 || !get_cleaned_def_path_name(self.tcx, *def_id).contains("slice::len") {
+        if args.is_empty() || !get_cleaned_def_path_name(self.tcx, *def_id).contains("slice::len") {
             return;
         }
-        let d_local = self.handle_proj(false, dst_place.clone());
+        let d_local = self.handle_proj(false, *dst_place);
         let ptr_local = get_arg_place(&args[0].node).1;
         let mem_local = self.chains.get_point_to_id(ptr_local);
         let mem_var = self.chains.get_var_node_mut(mem_local).unwrap();
@@ -678,7 +666,7 @@ impl<'tcx> BodyVisitor<'tcx> {
         fn_map: &FxHashMap<DefId, FnAliasPairs>,
         args: &Box<[Spanned<Operand>]>,
     ) {
-        let d_local = self.handle_proj(false, dst_place.clone());
+        let d_local = self.handle_proj(false, *dst_place);
         if let Some(retalias) = fn_map.get(def_id) {
             for alias_set in retalias.aliases() {
                 let (l, r) = (alias_set.left_local, alias_set.right_local);
@@ -782,11 +770,11 @@ impl<'tcx> BodyVisitor<'tcx> {
     /// Compute a compact FunctionSummary for this function based on the return local (_0).
     /// If the return resolves to a param or const expression, include it in the summary.
     pub fn compute_function_summary(&self) -> FunctionSummary<'tcx> {
-        if let Some(domain) = self.value_domains.get(&0) {
-            if let Some(def) = &domain.def {
-                let resolved_def = self.resolve_symbolic_def(def, 0); // 0 is the initial recursion deepth
-                return FunctionSummary::new(resolved_def);
-            }
+        if let Some(domain) = self.value_domains.get(&0)
+            && let Some(def) = &domain.def
+        {
+            let resolved_def = self.resolve_symbolic_def(def, 0); // 0 is the initial recursion deepth
+            return FunctionSummary::new(resolved_def);
         }
         FunctionSummary::new(None)
     }
@@ -836,10 +824,10 @@ impl<'tcx> BodyVisitor<'tcx> {
 
     /// Resolve a local's symbolic definition by consulting the value_domains map.
     fn resolve_local(&self, local_idx: usize, depth: usize) -> Option<SymbolicDef<'tcx>> {
-        if let Some(domain) = self.value_domains.get(&local_idx) {
-            if let Some(def) = &domain.def {
-                return self.resolve_symbolic_def(def, depth);
-            }
+        if let Some(domain) = self.value_domains.get(&local_idx)
+            && let Some(def) = &domain.def
+        {
+            return self.resolve_symbolic_def(def, depth);
         }
         None
     }
@@ -1026,28 +1014,28 @@ impl<'tcx> BodyVisitor<'tcx> {
         matched_val: u128,
     ) {
         // Handle is_aligned check
-        if func_name.ends_with("is_aligned") || func_name.contains("is_aligned") {
-            if let Some(AnaOperand::Local(ptr_local)) = args.get(0) {
-                // Determine target state: 1 -> Aligned, 0 -> Unaligned
-                let is_aligned_state = if matched_val == 1 {
-                    Some(true)
-                } else if matched_val == 0 {
-                    Some(false)
-                } else {
-                    None
-                };
+        if (func_name.ends_with("is_aligned") || func_name.contains("is_aligned"))
+            && let Some(AnaOperand::Local(ptr_local)) = args.first()
+        {
+            // Determine target state: 1 -> Aligned, 0 -> Unaligned
+            let is_aligned_state = if matched_val == 1 {
+                Some(true)
+            } else if matched_val == 0 {
+                Some(false)
+            } else {
+                None
+            };
 
-                if let Some(aligned) = is_aligned_state {
-                    // 1. Update the variable directly involved in the check (Current Node)
-                    // This covers cases where the checked variable is used immediately in the block.
-                    self.update_align_state(*ptr_local, aligned);
+            if let Some(aligned) = is_aligned_state {
+                // 1. Update the variable directly involved in the check (Current Node)
+                // This covers cases where the checked variable is used immediately in the block.
+                self.update_align_state(*ptr_local, aligned);
 
-                    // 2. Trace back to the source (Root Node) and update it
-                    // This covers cases where new copies are created from the source (e.g. _5 = copy _1).
-                    let root_local = self.find_source_var(*ptr_local);
-                    if root_local != *ptr_local {
-                        self.update_align_state(root_local, aligned);
-                    }
+                // 2. Trace back to the source (Root Node) and update it
+                // This covers cases where new copies are created from the source (e.g. _5 = copy _1).
+                let root_local = self.find_source_var(*ptr_local);
+                if root_local != *ptr_local {
+                    self.update_align_state(root_local, aligned);
                 }
             }
         }
@@ -1088,13 +1076,10 @@ impl<'tcx> BodyVisitor<'tcx> {
                 self.record_value_def(dst_local, resolved_def.clone());
 
                 // 3. Update DominatedGraph based on the resolved definition type
-                match resolved_def {
-                    SymbolicDef::PtrOffset(_, base_local, _, _) => {
-                        // Update graph topology and node info
-                        self.chains
-                            .update_from_offset_def(dst_local, base_local, resolved_def);
-                    }
-                    _ => {}
+                if let SymbolicDef::PtrOffset(_, base_local, _, _) = resolved_def {
+                    // Update graph topology and node info
+                    self.chains
+                        .update_from_offset_def(dst_local, base_local, resolved_def);
                 }
             }
         }
@@ -1156,8 +1141,8 @@ impl<'tcx> BodyVisitor<'tcx> {
     /// into value_domains for later symbolic checks.
     pub fn set_constraint(&mut self, constraint: &Vec<(Place<'tcx>, Place<'tcx>, BinOp)>) {
         for (p1, p2, op) in constraint {
-            let p1_num = self.handle_proj(false, p1.clone());
-            let p2_num = self.handle_proj(false, p2.clone());
+            let p1_num = self.handle_proj(false, *p1);
+            let p2_num = self.handle_proj(false, *p2);
             self.chains.insert_patial_op(p1_num, p2_num, op);
 
             if let BinOp::Eq = op {
@@ -1205,9 +1190,9 @@ impl<'tcx> BodyVisitor<'tcx> {
     /// Return layout information (align, size) or Unknown for a place via chain-derived type.
     pub fn get_layout_by_place_usize(&self, place: usize) -> PlaceTy<'tcx> {
         if let Some(ty) = self.chains.get_obj_ty_through_chain(place) {
-            return self.visit_ty_and_get_layout(ty);
+            self.visit_ty_and_get_layout(ty)
         } else {
-            return PlaceTy::Unknown;
+            PlaceTy::Unknown
         }
     }
 
@@ -1237,11 +1222,11 @@ impl<'tcx> BodyVisitor<'tcx> {
                         layout_set.insert((align, size));
                     }
                 }
-                return PlaceTy::GenericTy(generic_name, ty_set.unwrap().clone(), layout_set);
+                PlaceTy::GenericTy(generic_name, ty_set.unwrap().clone(), layout_set)
             }
             TyKind::Adt(def, _list) => {
                 if def.is_enum() {
-                    return PlaceTy::Unknown;
+                    PlaceTy::Unknown
                 } else {
                     PlaceTy::Unknown
                 }
@@ -1249,7 +1234,7 @@ impl<'tcx> BodyVisitor<'tcx> {
             TyKind::Closure(_, _) => PlaceTy::Unknown,
             TyKind::Alias(_, ty) => {
                 // rap_warn!("self ty {:?}",ty.self_ty());
-                return self.visit_ty_and_get_layout(ty.self_ty());
+                self.visit_ty_and_get_layout(ty.self_ty())
             }
             _ => {
                 let param_env = self.tcx.param_env(self.def_id);
@@ -1262,7 +1247,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     // let layout = self.tcx.layout_of(param_env.and(ty)).unwrap();
                     let align = layout.align.abi.bytes_usize();
                     let size = layout.size.bytes() as usize;
-                    return PlaceTy::Ty(align, size);
+                    PlaceTy::Ty(align, size)
                 } else {
                     // rap_warn!("Find type {:?} that can't get layout!", ty);
                     PlaceTy::Unknown
@@ -1280,12 +1265,9 @@ impl<'tcx> BodyVisitor<'tcx> {
         path_index: usize,
     ) {
         // Currently collects arg places for Offset.
-        match bin_op {
-            BinOp::Offset => {
-                let _first_place = get_arg_place(first_op);
-                let _second_place = get_arg_place(second_op);
-            }
-            _ => {}
+        if bin_op == &BinOp::Offset {
+            let _first_place = get_arg_place(first_op);
+            let _second_place = get_arg_place(second_op);
         }
     }
 
@@ -1329,16 +1311,12 @@ impl<'tcx> BodyVisitor<'tcx> {
     fn lift_operand(&mut self, op: &Operand<'tcx>) -> Option<AnaOperand> {
         match op {
             Operand::Copy(place) | Operand::Move(place) => {
-                Some(AnaOperand::Local(self.handle_proj(true, place.clone())))
+                Some(AnaOperand::Local(self.handle_proj(true, *place)))
             }
             Operand::Constant(box c) => match c.const_ {
-                rustc_middle::mir::Const::Ty(_ty, const_value) => {
-                    if let Some(val) = const_value.try_to_target_usize(self.tcx) {
-                        Some(AnaOperand::Const(val as u128))
-                    } else {
-                        None
-                    }
-                }
+                rustc_middle::mir::Const::Ty(_ty, const_value) => const_value
+                    .try_to_target_usize(self.tcx)
+                    .map(|val| AnaOperand::Const(val as u128)),
                 rustc_middle::mir::Const::Unevaluated(_unevaluated, _ty) => None,
                 rustc_middle::mir::Const::Val(const_value, _ty) => {
                     if let Some(scalar) = const_value.try_to_scalar_int() {
@@ -1468,10 +1446,10 @@ impl<'tcx> BodyVisitor<'tcx> {
                     let mut s_vec = Vec::new();
                     match &node.ots.align {
                         AlignState::Aligned(ty) => {
-                            if let Some(node_ty) = node.ty {
-                                if is_ptr(node_ty) || is_ref(node_ty) {
-                                    s_vec.push(format!("Align({:?})", ty));
-                                }
+                            if let Some(node_ty) = node.ty
+                                && (is_ptr(node_ty) || is_ref(node_ty))
+                            {
+                                s_vec.push(format!("Align({:?})", ty));
                             }
                         }
                         AlignState::Unaligned(ty) => s_vec.push(format!("Unalign({:?})", ty)),
@@ -1572,7 +1550,7 @@ impl<'tcx> BodyVisitor<'tcx> {
 
         for (i, constraint) in self.path_constraints.iter().enumerate() {
             let def_raw = self.format_symbolic_def(Some(constraint));
-            let def_str = def_raw.replace('\n', " ").replace('\t', " ");
+            let def_str = def_raw.replace(['\n', '\t'], " ");
 
             println!("| {:<6} | {:<73} |", i, self.safe_truncate(&def_str, 73));
         }
@@ -1624,7 +1602,7 @@ impl<'tcx> BodyVisitor<'tcx> {
             let local_str = format!("_{}", local_idx);
 
             let def_raw = self.format_symbolic_def(domain.def.as_ref());
-            let def_str = def_raw.replace('\n', " ").replace('\t', " ");
+            let def_str = def_raw.replace(['\n', '\t'], " ");
 
             let constraint_str = match domain.value_constraint {
                 Some(v) => format!("== {}", v),
@@ -1673,7 +1651,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     format!("{}({})", func_name, args_str.join(", "))
                 }
                 SymbolicDef::PtrOffset(binop, ptr, offset, size) => {
-                    let op_str = self.binop_to_symbol(&binop);
+                    let op_str = self.binop_to_symbol(binop);
                     format!("ptr_offset({}, _{}, {:?}, {:?})", op_str, ptr, offset, size)
                 }
             },

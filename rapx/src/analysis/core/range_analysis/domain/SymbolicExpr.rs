@@ -237,34 +237,33 @@ impl<'tcx> SymbExpr<'tcx> {
 
         // self.try_fold_constants::<T>();
         rap_trace!("symexpr {}", self);
-        if let SymbExpr::Place(place) = self {
-            if let Some(node) = vars.get(place) {
-                if let IntervalType::Basic(basic) = &node.interval {
-                    rap_trace!("node {:?}", *node);
+        if let SymbExpr::Place(place) = self
+            && let Some(node) = vars.get(place)
+            && let IntervalType::Basic(basic) = &node.interval
+        {
+            rap_trace!("node {:?}", *node);
 
-                    let target_expr = if basic.lower == basic.upper {
-                        &basic.upper
-                    } else {
-                        match mode {
-                            BoundMode::Upper => &basic.upper,
-                            BoundMode::Lower => &basic.lower,
-                        }
-                    };
+            let target_expr = if basic.lower == basic.upper {
+                &basic.upper
+            } else {
+                match mode {
+                    BoundMode::Upper => &basic.upper,
+                    BoundMode::Lower => &basic.lower,
+                }
+            };
 
-                    match target_expr {
-                        SymbExpr::Unknown => *self = SymbExpr::Unknown,
-                        SymbExpr::Constant(c) => *self = SymbExpr::Constant(c.clone()),
-                        expr => {
-                            if let SymbExpr::Place(target_place) = expr {
-                                if target_place == place {
-                                    return;
-                                }
-                            }
-
-                            *self = expr.clone();
-                            self.resolve_recursive(vars, depth + 1, mode);
-                        }
+            match target_expr {
+                SymbExpr::Unknown => *self = SymbExpr::Unknown,
+                SymbExpr::Constant(c) => *self = SymbExpr::Constant(*c),
+                expr => {
+                    if let SymbExpr::Place(target_place) = expr
+                        && target_place == place
+                    {
+                        return;
                     }
+
+                    *self = expr.clone();
+                    self.resolve_recursive(vars, depth + 1, mode);
                 }
             }
         }
@@ -500,11 +499,11 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> SymbInterval<'tcx, T> {
         bound: &VarNode<'tcx, T>,
         sink: &VarNode<'tcx, T>,
     ) -> Range<T> {
-        let l = bound.get_range().get_lower().clone();
-        let u = bound.get_range().get_upper().clone();
+        let l = bound.get_range().get_lower();
+        let u = bound.get_range().get_upper();
 
-        let lower = sink.get_range().get_lower().clone();
-        let upper = sink.get_range().get_upper().clone();
+        let lower = sink.get_range().get_lower();
+        let upper = sink.get_range().get_upper();
 
         match self.predicate {
             BinOp::Eq => Range::new(l, u, RangeType::Regular),

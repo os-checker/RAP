@@ -60,14 +60,13 @@ fn find_downside_hash_insert_node(graph: &Graph, node_idx: Local) -> Option<Loca
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.hashmap_insert.last_def_id()
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.hashmap_insert.last_def_id()
                     || *def_id == def_paths.hashset_insert.last_def_id()
-                    || *def_id == def_paths.entry.last_def_id()
-                {
-                    hash_insert_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+                    || *def_id == def_paths.entry.last_def_id())
+            {
+                hash_insert_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -92,11 +91,11 @@ impl OptCheck for UnreservedHashCheck {
     fn check(&mut self, graph: &Graph, tcx: &TyCtxt) {
         let _ = &DEFPATHS.get_or_init(|| DefPaths::new(tcx));
         for (node_idx, node) in graph.nodes.iter_enumerated() {
-            if is_hash_new_node(node) {
-                if let Some(insert_idx) = find_downside_hash_insert_node(graph, node_idx) {
-                    let insert_node = &graph.nodes[insert_idx];
-                    self.record.push((node.span, insert_node.span));
-                }
+            if is_hash_new_node(node)
+                && let Some(insert_idx) = find_downside_hash_insert_node(graph, node_idx)
+            {
+                let insert_node = &graph.nodes[insert_idx];
+                self.record.push((node.span, insert_node.span));
             }
         }
     }

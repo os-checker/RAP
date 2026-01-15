@@ -43,7 +43,6 @@ impl<'tcx> UPGAnalysis<'tcx> {
         match ins {
             TargetCrate::Std => {
                 self.audit_std_unsafe();
-                return;
             }
             _ => {
                 /* Type of collected data: FxHashMap<Option<HirId>, Vec<(BodyId, Span)>>;
@@ -94,7 +93,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
 
         // Skip processing if the caller is the dummy raw pointer dereference function
         let caller_name = get_fn_name_byid(&def_id);
-        if let Some(_) = caller_name.find("__raw_ptr_deref_dummy") {
+        if caller_name.contains("__raw_ptr_deref_dummy") {
             return;
         }
 
@@ -128,7 +127,7 @@ impl<'tcx> UPGAnalysis<'tcx> {
             let module_name = get_module_name(self.tcx, caller_id);
             rap_info!("module name: {:?}", module_name);
 
-            let module_data = modules_data.entry(module_name).or_insert_with(UPGraph::new);
+            let module_data = modules_data.entry(module_name).or_default();
 
             module_data.add_node(self.tcx, unit.caller, None);
 

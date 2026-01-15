@@ -37,48 +37,33 @@ pub trait ConstConvert: Sized {
 
 impl ConstConvert for u32 {
     fn from_const(c: &Const) -> Option<Self> {
-        if let Some(scalar) = c.try_to_scalar_int() {
-            Some(scalar.to_bits(scalar.size()) as u32)
-        } else {
-            None
-        }
+        c.try_to_scalar_int()
+            .map(|scalar| scalar.to_bits(scalar.size()) as u32)
     }
 }
 impl ConstConvert for usize {
     fn from_const(c: &Const) -> Option<Self> {
-        if let Some(scalar) = c.try_to_scalar_int() {
-            Some(scalar.to_bits(scalar.size()) as usize)
-        } else {
-            None
-        }
+        c.try_to_scalar_int()
+            .map(|scalar| scalar.to_bits(scalar.size()) as usize)
     }
 }
 impl ConstConvert for i32 {
     fn from_const(c: &Const) -> Option<Self> {
-        if let Some(scalar) = c.try_to_scalar_int() {
-            Some(scalar.to_bits(scalar.size()) as i32)
-        } else {
-            None
-        }
+        c.try_to_scalar_int()
+            .map(|scalar| scalar.to_bits(scalar.size()) as i32)
     }
 }
 
 impl ConstConvert for i64 {
     fn from_const(c: &Const) -> Option<Self> {
-        if let Some(scalar) = c.try_to_scalar_int() {
-            Some(scalar.to_bits(scalar.size()) as i64)
-        } else {
-            None
-        }
+        c.try_to_scalar_int()
+            .map(|scalar| scalar.to_bits(scalar.size()) as i64)
     }
 }
 impl ConstConvert for i128 {
     fn from_const(c: &Const) -> Option<Self> {
-        if let Some(scalar) = c.try_to_scalar_int() {
-            Some(scalar.to_bits(scalar.size()) as i128)
-        } else {
-            None
-        }
+        c.try_to_scalar_int()
+            .map(|scalar| scalar.to_bits(scalar.size()) as i128)
     }
 }
 pub trait IntervalArithmetic:
@@ -140,7 +125,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> fmt::Display for BasicO
                 op.source1,
                 op.source2,
                 op.inst,
-                op.const_value.clone().unwrap()
+                op.const_value.unwrap()
             ),
             BasicOpKind::Essa(op) => write!(
                 f,
@@ -357,7 +342,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
     }
 
     pub fn eval(&self, caller_vars: &VarNodes<'tcx, T>) -> Range<T> {
-        return Range::default(T::min_value());
+        Range::default(T::min_value())
     }
     pub fn eval_call(
         &self,
@@ -407,8 +392,8 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                 match self.args.last() {
                     Some(Operand::Copy(place)) | Some(Operand::Move(place)) => {
                         let range = caller_vars[place].get_range().clone();
-                        let len = range.get_upper().clone() - range.get_lower().clone();
-                        result = Range::new(len.clone(), len.clone(), RangeType::Regular);
+                        let len = range.get_upper() - range.get_lower();
+                        result = Range::new(len, len, RangeType::Regular);
                     }
                     Some(Operand::Constant(c)) => {}
                     None => {}
@@ -495,29 +480,25 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                                 self.def_id
                             );
                             let callee_arg_local = rustc_middle::mir::Local::from_usize(i + 1);
-                            if let Some(const_value) = Self::convert_const(&const_operand.const_) {
-                                if let Some(callee_arg_node) =
+                            if let Some(const_value) = Self::convert_const(&const_operand.const_)
+                                && let Some(callee_arg_node) =
                                     callee_cg.vars.values_mut().find(|v| {
                                         v.v.local == callee_arg_local && v.v.projection.is_empty()
                                     })
-                                {
-                                    // Get the range from the caller's variable and set it for the callee's argument.
+                            {
+                                // Get the range from the caller's variable and set it for the callee's argument.
 
-                                    let arg_range = Range::new(
-                                        const_value.clone(),
-                                        const_value.clone(),
-                                        RangeType::Regular,
-                                    );
-                                    callee_arg_node.set_range(arg_range.clone());
-                                    rap_debug!(
-                                        "Passing argument from {:?} to callee {:?} : {:?} {:?} -> {:?}",
-                                        const_value,
-                                        self.def_id,
-                                        callee_arg_node.get_value(),
-                                        arg_range,
-                                        callee_arg_node.get_range()
-                                    );
-                                }
+                                let arg_range =
+                                    Range::new(const_value, const_value, RangeType::Regular);
+                                callee_arg_node.set_range(arg_range.clone());
+                                rap_debug!(
+                                    "Passing argument from {:?} to callee {:?} : {:?} {:?} -> {:?}",
+                                    const_value,
+                                    self.def_id,
+                                    callee_arg_node.get_value(),
+                                    arg_range,
+                                    callee_arg_node.get_range()
+                                );
                             }
                             // Find the corresponding Place and VarNode in the callee.
                         }
@@ -532,7 +513,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
 
                 // 5. Retrieve the return value.
                 //    The return value is stored in `_0` (RETURN_PLACE).
-                let return_place_local = 0 as usize; // `_0` is typically the first local.
+                let return_place_local = 0_usize; // `_0` is typically the first local.
                 let mut return_range = Range::default(T::min_value());
 
                 // Find all variables that contribute to the return value.
@@ -632,7 +613,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> AggregateOp<'tcx, T> {
                 let mut upper = T::max_value();
                 match self.operands.first() {
                     Some(AggregateOperand::Place(place)) => {
-                        lower = vars[*place].get_range().get_lower().clone();
+                        lower = vars[*place].get_range().get_lower();
                     }
                     Some(AggregateOperand::Const(c)) => {
                         lower = T::from_const(c).unwrap_or(T::min_value());
@@ -641,7 +622,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> AggregateOp<'tcx, T> {
                 }
                 match self.operands.last() {
                     Some(AggregateOperand::Place(place)) => {
-                        upper = vars[*place].get_range().get_upper().clone();
+                        upper = vars[*place].get_range().get_upper();
                     }
                     Some(AggregateOperand::Const(c)) => {
                         upper = T::from_const(c).unwrap_or(T::max_value());
@@ -689,7 +670,6 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> UseOp<'tcx, T> {
             let mut result = Range::default(T::min_value());
             if range.is_regular() {
                 result = range
-            } else {
             }
             result
         } else {
@@ -841,27 +821,24 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> BinaryOp<'tcx, T> {
             op2 = vars[self.source2.unwrap()].get_range().clone();
         }
         let mut result = Range::default(T::min_value());
-        match &self.inst.kind {
-            StatementKind::Assign(box (place, rvalue)) => match rvalue {
-                Rvalue::BinaryOp(binop, _) => match binop {
-                    BinOp::Add | BinOp::AddUnchecked | BinOp::AddWithOverflow => {
-                        result = op1.add(&op2);
-                    }
+        if let StatementKind::Assign(box (place, rvalue)) = &self.inst.kind
+            && let Rvalue::BinaryOp(binop, _) = rvalue
+        {
+            match binop {
+                BinOp::Add | BinOp::AddUnchecked | BinOp::AddWithOverflow => {
+                    result = op1.add(&op2);
+                }
 
-                    BinOp::SubUnchecked | BinOp::SubWithOverflow | BinOp::Sub => {
-                        result = op1.sub(&op2);
-                    }
+                BinOp::SubUnchecked | BinOp::SubWithOverflow | BinOp::Sub => {
+                    result = op1.sub(&op2);
+                }
 
-                    BinOp::MulUnchecked | BinOp::MulWithOverflow | BinOp::Mul => {
-                        result = op1.mul(&op2);
-                    }
+                BinOp::MulUnchecked | BinOp::MulWithOverflow | BinOp::Mul => {
+                    result = op1.mul(&op2);
+                }
 
-                    _ => {}
-                },
                 _ => {}
-            },
-
-            _ => {}
+            }
         }
 
         result

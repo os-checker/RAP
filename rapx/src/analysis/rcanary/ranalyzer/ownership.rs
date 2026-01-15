@@ -5,17 +5,9 @@ use rustc_middle::ty::Ty;
 
 use crate::analysis::core::ownedheap_analysis::default::TyWithIndex;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct Taint<'tcx> {
     set: HashSet<TyWithIndex<'tcx>>,
-}
-
-impl<'tcx> Default for Taint<'tcx> {
-    fn default() -> Self {
-        Self {
-            set: HashSet::default(),
-        }
-    }
 }
 
 impl<'tcx> Taint<'tcx> {
@@ -44,17 +36,12 @@ impl<'tcx> Taint<'tcx> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Default)]
 pub enum IntraVar<'ctx> {
+    #[default]
     Declared,
     Init(ast::BV<'ctx>),
     Unsupported,
-}
-
-impl<'ctx> Default for IntraVar<'ctx> {
-    fn default() -> Self {
-        Self::Declared
-    }
 }
 
 impl<'ctx> IntraVar<'ctx> {
@@ -87,9 +74,13 @@ impl<'ctx> IntraVar<'ctx> {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Default)]
 pub enum ContextTypeOwner<'tcx> {
-    Owned { kind: OwnerKind, ty: Ty<'tcx> },
+    Owned {
+        kind: OwnerKind,
+        ty: Ty<'tcx>,
+    },
+    #[default]
     Unowned,
 }
 
@@ -98,12 +89,6 @@ pub enum OwnerKind {
     Instance,
     Reference,
     Pointer,
-}
-
-impl<'tcx> Default for ContextTypeOwner<'tcx> {
-    fn default() -> Self {
-        Self::Unowned
-    }
 }
 
 impl<'tcx> ContextTypeOwner<'tcx> {

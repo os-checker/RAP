@@ -60,12 +60,11 @@ impl OptCheck for LocalSetCheck {
         let def_paths = &DEFPATHS.get_or_init(|| DefPaths::new(tcx));
         for (node_idx, node) in graph.nodes.iter_enumerated() {
             for op in node.ops.iter() {
-                if let NodeOp::Call(def_id) = op {
-                    if def_paths.has_id(*def_id)
-                        && !graph.is_connected(Local::from_usize(0), node_idx)
-                    {
-                        self.record.push(node.span);
-                    }
+                if let NodeOp::Call(def_id) = op
+                    && def_paths.has_id(*def_id)
+                    && !graph.is_connected(Local::from_usize(0), node_idx)
+                {
+                    self.record.push(node.span);
                 }
             }
         }

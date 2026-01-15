@@ -125,15 +125,15 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
     }
 
     pub fn is_node_exist(&self, node: &DepNode<'tcx>) -> bool {
-        self.node_indices.contains_key(&node)
+        self.node_indices.contains_key(node)
     }
 
     pub fn get_or_create_index(&mut self, node: DepNode<'tcx>) -> NodeIndex {
         if let Some(node_index) = self.node_indices.get(&node) {
             *node_index
         } else {
-            let node_index = self.graph.add_node(node.clone());
-            self.node_indices.insert(node.clone(), node_index);
+            let node_index = self.graph.add_node(node);
+            self.node_indices.insert(node, node_index);
             match node {
                 DepNode::Api(..) => {
                     self.api_nodes.push(node_index);
@@ -148,7 +148,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
     }
 
     pub fn get_index(&self, node: DepNode<'tcx>) -> Option<NodeIndex> {
-        self.node_indices.get(&node).map(|index| *index)
+        self.node_indices.get(&node).copied()
     }
 
     pub fn add_edge(&mut self, src: NodeIndex, dst: NodeIndex, edge: DepEdge) {
@@ -261,17 +261,10 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
                 }
                 if match self.graph[next] {
                     DepNode::Ty(_) => true,
-                    DepNode::Api(..) => {
-                        if self
-                            .graph
-                            .neighbors_directed(next, petgraph::Direction::Incoming)
-                            .all(|nbor| reachable[nbor.index()])
-                        {
-                            true
-                        } else {
-                            false
-                        }
-                    }
+                    DepNode::Api(..) => self
+                        .graph
+                        .neighbors_directed(next, petgraph::Direction::Incoming)
+                        .all(|nbor| reachable[nbor.index()]),
                 } {
                     // rap_trace!("[estimate_coverage] add {:?} to worklist", next);
                     reachable[next.index()] = true;
@@ -327,7 +320,7 @@ impl<'tcx> ApiDependencyGraph<'tcx> {
             };
         let get_node_attr = |graph: &Graph<DepNode<'tcx>, DepEdge>,
                              node_ref: (NodeIndex, &DepNode<'tcx>)| {
-            format!("label={:?}, ", desc_str(node_ref.1.clone(), tcx))
+            format!("label={:?}, ", desc_str(*node_ref.1, tcx))
                 + match node_ref.1 {
                     DepNode::Api(..) => "color = blue",
                     DepNode::Ty(_) => "color = red",

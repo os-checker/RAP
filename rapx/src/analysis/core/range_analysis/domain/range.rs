@@ -82,12 +82,12 @@ where
         }
     }
     pub fn get_lower(&self) -> T {
-        self.range.lower().unwrap().clone()
+        *self.range.lower().unwrap()
     }
 
     // Getter for upper bound
     pub fn get_upper(&self) -> T {
-        self.range.upper().unwrap().clone()
+        *self.range.upper().unwrap()
     }
 
     // // Setter for lower bound
@@ -164,11 +164,11 @@ where
     }
 
     pub fn mul(&self, other: &Range<T>) -> Range<T> {
-        let candidates = vec![
-            self.get_lower().clone() * other.get_lower().clone(),
-            self.get_lower().clone() * other.get_upper().clone(),
-            self.get_upper().clone() * other.get_lower().clone(),
-            self.get_upper().clone() * other.get_upper().clone(),
+        let candidates = [
+            self.get_lower() * other.get_lower(),
+            self.get_lower() * other.get_upper(),
+            self.get_upper() * other.get_lower(),
+            self.get_upper() * other.get_upper(),
         ];
         let min = candidates
             .iter()
@@ -185,17 +185,9 @@ where
 
     pub fn intersectwith(&self, other: &Range<T>) -> Range<T> {
         if self.is_unknown() {
-            return Range::new(
-                other.get_lower().clone(),
-                other.get_upper().clone(),
-                RangeType::Regular,
-            );
+            Range::new(other.get_lower(), other.get_upper(), RangeType::Regular)
         } else if other.is_unknown() {
-            return Range::new(
-                self.get_lower().clone(),
-                self.get_upper().clone(),
-                RangeType::Regular,
-            );
+            Range::new(self.get_lower(), self.get_upper(), RangeType::Regular)
         } else {
             let result = self.range.clone().intersection(&other.range.clone());
             let mut range = Range::default(T::min_value());
@@ -223,17 +215,9 @@ where
     }
     pub fn unionwith(&self, other: &Range<T>) -> Range<T> {
         if self.is_unknown() {
-            return Range::new(
-                other.get_lower().clone(),
-                other.get_upper().clone(),
-                RangeType::Regular,
-            );
+            Range::new(other.get_lower(), other.get_upper(), RangeType::Regular)
         } else if other.is_unknown() {
-            return Range::new(
-                self.get_lower().clone(),
-                self.get_upper().clone(),
-                RangeType::Regular,
-            );
+            Range::new(self.get_lower(), self.get_upper(), RangeType::Regular)
         } else {
             let left = std::cmp::min_by(self.get_lower(), other.get_lower(), |a, b| {
                 a.partial_cmp(b).unwrap()
@@ -241,7 +225,7 @@ where
             let right = std::cmp::max_by(self.get_upper(), other.get_upper(), |a, b| {
                 a.partial_cmp(b).unwrap()
             });
-            Range::new(left.clone(), right.clone(), RangeType::Regular)
+            Range::new(left, right, RangeType::Regular)
         }
     }
     // Check if the range is the maximum range
@@ -281,16 +265,16 @@ impl Meet {
         let old_upper = old_interval.get_upper();
         let new_lower = new_interval.get_lower();
         let new_upper = new_interval.get_upper();
-        let nlconstant = new_lower.clone();
-        let nuconstant = new_upper.clone();
+        let nlconstant = new_lower;
+        let nuconstant = new_upper;
         let updated = if old_interval.is_unknown() {
             new_interval
         } else if new_lower < old_lower && new_upper > old_upper {
             Range::new(nlconstant, nuconstant, RangeType::Regular)
         } else if new_lower < old_lower {
-            Range::new(nlconstant, old_upper.clone(), RangeType::Regular)
+            Range::new(nlconstant, old_upper, RangeType::Regular)
         } else if new_upper > old_upper {
-            Range::new(old_lower.clone(), nuconstant, RangeType::Regular)
+            Range::new(old_lower, nuconstant, RangeType::Regular)
         } else {
             old_interval.clone()
         };
@@ -314,19 +298,19 @@ impl Meet {
         vars: &mut VarNodes<'tcx, T>,
     ) -> bool {
         let old_range = vars[op.get_sink()].get_range();
-        let o_lower = old_range.get_lower().clone();
-        let o_upper = old_range.get_upper().clone();
+        let o_lower = old_range.get_lower();
+        let o_upper = old_range.get_upper();
 
         let new_range = op.eval(vars);
-        let n_lower = new_range.get_lower().clone();
-        let n_upper = new_range.get_upper().clone();
+        let n_lower = new_range.get_lower();
+        let n_upper = new_range.get_upper();
 
         let mut has_changed = false;
         let min = T::min_value();
         let max = T::max_value();
 
-        let mut result_lower = o_lower.clone();
-        let mut result_upper = o_upper.clone();
+        let mut result_lower = o_lower;
+        let mut result_upper = o_upper;
 
         if o_lower == min && n_lower != min {
             result_lower = n_lower;
@@ -353,11 +337,7 @@ impl Meet {
         }
 
         if has_changed {
-            let new_sink_range = Range::new(
-                result_lower.clone(),
-                result_upper.clone(),
-                RangeType::Regular,
-            );
+            let new_sink_range = Range::new(result_lower, result_upper, RangeType::Regular);
             let sink_node = vars.get_mut(op.get_sink()).unwrap();
             sink_node.set_range(new_sink_range.clone());
 

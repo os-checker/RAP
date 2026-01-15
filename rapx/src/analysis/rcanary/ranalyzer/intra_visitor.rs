@@ -77,7 +77,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         solver: &'ctx z3::Solver<'ctx>,
         body: &'tcx Body<'tcx>,
     ) {
-        let topo: Vec<usize> = self.graph.get_topo().iter().map(|id| *id).collect();
+        let topo: Vec<usize> = self.graph.get_topo().to_vec();
         for bidx in topo {
             let data = &body.basic_blocks[BasicBlock::from(bidx)];
             self.visit_block_data(ctx, goal, solver, data, bidx);
@@ -232,7 +232,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                 *self.icx_slice_mut() = ans_icx_slice.clone();
             }
         } else {
-            if pre.len() == 0 {
+            if pre.is_empty() {
                 rap_error!("The pre node is empty, check the logic is safe to launch.");
             }
             self.icx_mut().derive_from_pre_node(pre[0], bidx);
@@ -328,9 +328,9 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                     goal,
                     solver,
                     term.clone(),
-                    &func,
-                    &args,
-                    &destination,
+                    func,
+                    args,
+                    destination,
                     bidx,
                 );
             }
@@ -539,54 +539,49 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                     return;
                 }
                 let kind = AsgnKind::Aggregate;
-                match **akind {
-                    AggregateKind::Adt(did, vidx, ..) => {
-                        self.handle_aggregate_init(
-                            ctx, goal, solver, kind, lplace, did, vidx, disc, bidx, sidx,
-                        );
-                        for (fidx, op) in operands.iter().enumerate() {
-                            let aggre = Some(fidx);
-                            match op {
-                                Operand::Copy(rplace) => {
-                                    let rvalue_has_projection = has_projection(rplace);
-                                    match rvalue_has_projection {
-                                        true => {
-                                            self.handle_copy_field_to_field(
-                                                ctx, goal, solver, kind, lplace, rplace, disc,
-                                                aggre, bidx, sidx,
-                                            );
-                                        }
-                                        false => {
-                                            self.handle_copy_to_field(
-                                                ctx, goal, solver, kind, lplace, rplace, disc,
-                                                aggre, bidx, sidx,
-                                            );
-                                        }
+                if let AggregateKind::Adt(did, vidx, ..) = **akind {
+                    self.handle_aggregate_init(
+                        ctx, goal, solver, kind, lplace, did, vidx, disc, bidx, sidx,
+                    );
+                    for (fidx, op) in operands.iter().enumerate() {
+                        let aggre = Some(fidx);
+                        match op {
+                            Operand::Copy(rplace) => {
+                                let rvalue_has_projection = has_projection(rplace);
+                                match rvalue_has_projection {
+                                    true => {
+                                        self.handle_copy_field_to_field(
+                                            ctx, goal, solver, kind, lplace, rplace, disc, aggre,
+                                            bidx, sidx,
+                                        );
+                                    }
+                                    false => {
+                                        self.handle_copy_to_field(
+                                            ctx, goal, solver, kind, lplace, rplace, disc, aggre,
+                                            bidx, sidx,
+                                        );
                                     }
                                 }
-                                Operand::Move(rplace) => {
-                                    let rvalue_has_projection = has_projection(rplace);
-                                    match rvalue_has_projection {
-                                        true => {
-                                            self.handle_move_field_to_field(
-                                                ctx, goal, solver, kind, lplace, rplace, disc,
-                                                aggre, bidx, sidx,
-                                            );
-                                        }
-                                        false => {
-                                            self.handle_move_to_field(
-                                                ctx, goal, solver, kind, lplace, rplace, disc,
-                                                aggre, bidx, sidx,
-                                            );
-                                        }
-                                    }
-                                }
-                                _ => (),
                             }
+                            Operand::Move(rplace) => {
+                                let rvalue_has_projection = has_projection(rplace);
+                                match rvalue_has_projection {
+                                    true => {
+                                        self.handle_move_field_to_field(
+                                            ctx, goal, solver, kind, lplace, rplace, disc, aggre,
+                                            bidx, sidx,
+                                        );
+                                    }
+                                    false => {
+                                        self.handle_move_to_field(
+                                            ctx, goal, solver, kind, lplace, rplace, disc, aggre,
+                                            bidx, sidx,
+                                        );
+                                    }
+                                }
+                            }
+                            _ => (),
                         }
-                    }
-                    _ => {
-                        return;
                     }
                 }
             }
@@ -1984,7 +1979,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
     ) -> (bool, Vec<usize>) {
         let mut ans: (bool, Vec<usize>) = (false, Vec::new());
 
-        if args.len() == 0 {
+        if args.is_empty() {
             return ans;
         }
 
@@ -2032,37 +2027,22 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
         dest: &Place<'tcx>,
         bidx: usize,
     ) {
-        match func {
-            Operand::Constant(constant) => {
-                match constant.ty().kind() {
-                    ty::FnDef(id, ..) => {
-                        //rap_debug!("{:?}", id);
-                        //rap_debug!("{:?}", mir_body(self.tcx, *id));
-                        match id.index.as_usize() {
-                            2171 => {
-                                // this for calling std::mem::drop(TY)
-                                match args[0].node {
-                                    Operand::Move(aplace) => {
-                                        let a_place_ty =
-                                            dest.ty(&self.body.local_decls, self.tcx());
-                                        let a_ty = a_place_ty.ty;
-                                        if a_ty.is_adt() {
-                                            self.handle_drop(
-                                                ctx, goal, solver, &aplace, bidx, false,
-                                            );
-                                            return;
-                                        }
-                                    }
-                                    _ => (),
-                                }
-                            }
-                            _ => (),
+        if let Operand::Constant(constant) = func {
+            if let ty::FnDef(id, ..) = constant.ty().kind() {
+                //rap_debug!("{:?}", id);
+                //rap_debug!("{:?}", mir_body(self.tcx, *id));
+                if id.index.as_usize() == 2171 {
+                    // this for calling std::mem::drop(TY)
+                    if let Operand::Move(aplace) = args[0].node {
+                        let a_place_ty = dest.ty(&self.body.local_decls, self.tcx());
+                        let a_ty = a_place_ty.ty;
+                        if a_ty.is_adt() {
+                            self.handle_drop(ctx, goal, solver, &aplace, bidx, false);
+                            return;
                         }
                     }
-                    _ => (),
                 }
             }
-            _ => (),
         }
 
         // for return value
@@ -2218,11 +2198,9 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                                 // if the aplace is a instance (i => Copy)
                                 // for Instance Copy => No need to change
 
-                                if is_a_ptr {
-                                    if recovery_flag.0 && recovery_flag.1.contains(&au) {
-                                        self.handle_drop(ctx, goal, solver, &aplace, bidx, true);
-                                        continue;
-                                    }
+                                if is_a_ptr && recovery_flag.0 && recovery_flag.1.contains(&au) {
+                                    self.handle_drop(ctx, goal, solver, &aplace, bidx, true);
+                                    continue;
                                 }
 
                                 let a_name = new_local_name(au, bidx, 0).add("_param_pass");
@@ -2380,12 +2358,10 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
                 let update_field = if source_flag {
                     ast::BV::from_u64(ctx, 1, 1)
+                } else if return_value_layout.layout()[index_needed] == OwnedHeap::True {
+                    ast::BV::from_u64(ctx, 1, 1)
                 } else {
-                    if return_value_layout.layout()[index_needed] == OwnedHeap::True {
-                        ast::BV::from_u64(ctx, 1, 1)
-                    } else {
-                        ast::BV::from_u64(ctx, 0, 1)
-                    }
+                    ast::BV::from_u64(ctx, 0, 1)
                 };
 
                 let mut final_bv: ast::BV;
@@ -2409,7 +2385,6 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
             }
             _ => {
                 self.handle_intra_var_unsupported(lu);
-                return;
             }
         }
     }
@@ -2622,12 +2597,11 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 
     pub(crate) fn handle_intra_var_unsupported(&mut self, idx: usize) {
         match self.icx_slice_mut().var_mut()[idx] {
-            IntraVar::Unsupported => return,
+            IntraVar::Unsupported => (),
             IntraVar::Declared | IntraVar::Init(_) => {
                 // turns into the unsupported
                 self.icx_slice_mut().var_mut()[idx] = IntraVar::Unsupported;
                 self.icx_slice_mut().len_mut()[idx] = 0;
-                return;
             }
         }
     }
@@ -2847,13 +2821,11 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
 }
 
 fn new_local_name(local: usize, bidx: usize, sidx: usize) -> String {
-    let s = bidx
-        .to_string()
+    bidx.to_string()
         .add("_")
         .add(&sidx.to_string())
         .add("_")
-        .add(&local.to_string());
-    s
+        .add(&local.to_string())
 }
 
 fn is_place_containing_ptr(ty: &Ty) -> bool {
@@ -2872,23 +2844,12 @@ fn is_place_containing_ptr(ty: &Ty) -> bool {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct ProjectionSupport<'tcx> {
     pf_vec: Vec<(usize, Ty<'tcx>)>,
     deref: bool,
     downcast: Disc,
     unsupport: bool,
-}
-
-impl<'tcx> Default for ProjectionSupport<'tcx> {
-    fn default() -> Self {
-        Self {
-            pf_vec: Vec::default(),
-            deref: false,
-            downcast: None,
-            unsupport: false,
-        }
-    }
 }
 
 impl<'tcx> ProjectionSupport<'tcx> {
@@ -2897,11 +2858,11 @@ impl<'tcx> ProjectionSupport<'tcx> {
     }
 
     pub fn is_unsupported(&self) -> bool {
-        self.unsupport == true
+        self.unsupport
     }
 
     pub fn has_field(&self) -> bool {
-        self.pf_vec.len() > 0
+        !self.pf_vec.is_empty()
     }
 
     pub fn has_downcast(&self) -> bool {
@@ -2918,11 +2879,7 @@ impl<'tcx> ProjectionSupport<'tcx> {
 }
 
 fn has_projection(place: &Place) -> bool {
-    return if place.projection.len() > 0 {
-        true
-    } else {
-        false
-    };
+    !place.projection.is_empty()
 }
 
 fn heap_layout_to_rustbv(layout: &Vec<OwnedHeap>) -> Vec<bool> {
@@ -2965,8 +2922,8 @@ fn rustbv_to_int(bv: &Vec<bool>) -> u64 {
     let mut ans = 0;
     let mut base = 1;
     for tf in bv.iter() {
-        ans = ans + base * (*tf as u64);
-        base = base * 2;
+        ans += base * (*tf as u64);
+        base *= 2;
     }
     ans
 }

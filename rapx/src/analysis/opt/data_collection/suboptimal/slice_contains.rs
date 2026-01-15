@@ -36,7 +36,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for ContainsFinder<'tcx> {
                 .typeck_results
                 .type_dependent_def_id(ex.hir_id)
                 .unwrap();
-            let target_def_id = (&DEFPATHS.get().unwrap()).slice_contains.last_def_id();
+            let target_def_id = DEFPATHS.get().unwrap().slice_contains.last_def_id();
             if def_id == target_def_id {
                 self.record.push(span);
             }

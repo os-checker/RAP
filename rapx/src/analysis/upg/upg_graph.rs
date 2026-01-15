@@ -79,6 +79,12 @@ pub struct UPGraph {
     nodes: HashMap<DefId, String>,
 }
 
+impl Default for UPGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UPGraph {
     pub fn new() -> Self {
         Self {

@@ -66,7 +66,7 @@ pub fn parse_unsafe_api(func_name: &str) -> Option<UnsafeApi> {
 // (is const, value)
 pub fn get_arg_place(arg: &Operand) -> (bool, usize) {
     match arg {
-        Operand::Move(place) | Operand::Copy(place) => return (false, place.local.as_usize()),
+        Operand::Move(place) | Operand::Copy(place) => (false, place.local.as_usize()),
         Operand::Constant(constant) => {
             let mut val = 0;
             match constant.const_ {
@@ -80,7 +80,7 @@ pub fn get_arg_place(arg: &Operand) -> (bool, usize) {
                     }
                 }
             }
-            return (true, val);
+            (true, val)
         }
     }
 }

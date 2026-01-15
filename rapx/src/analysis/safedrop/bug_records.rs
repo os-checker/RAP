@@ -31,6 +31,12 @@ pub struct BugRecords {
     pub dp_bugs_unwind: FxHashMap<usize, TyBug>,
 }
 
+impl Default for BugRecords {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BugRecords {
     pub fn new() -> BugRecords {
         BugRecords {

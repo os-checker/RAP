@@ -5,17 +5,17 @@ pub fn should_check(def_id: DefId) -> bool {
     if let Some(x) = def_str.rfind("::") {
         def_str = def_str.get((x + "::".len())..).unwrap().to_string();
     }
-    if let Some(_) = def_str.find("drop") {
+    if def_str.contains("drop") {
         return false;
     }
-    if let Some(_) = def_str.find("dealloc") {
+    if def_str.contains("dealloc") {
         return false;
     }
-    if let Some(_) = def_str.find("release") {
+    if def_str.contains("release") {
         return false;
     }
-    if let Some(_) = def_str.find("destroy") {
+    if def_str.contains("destroy") {
         return false;
     }
-    return true;
+    true
 }

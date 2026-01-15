@@ -39,7 +39,6 @@ impl<'tcx> ContainsUnsafe<'tcx> {
             let sig = self.tcx.fn_sig(did);
             if let rustc_hir::Safety::Unsafe = sig.skip_binder().safety() {
                 self.fn_unsafe = true;
-                return;
             }
         }
     }
@@ -63,12 +62,11 @@ pub struct ContainsLit {
 
 impl<'tcx> Visitor<'tcx> for ContainsLit {
     fn visit_expr(&mut self, expr: &'tcx rustc_hir::Expr<'tcx>) {
-        if let ExprKind::Struct(ref qpath, _, _) = expr.kind {
-            if let QPath::Resolved(_, path) = qpath {
-                if let Some(ident) = path.segments.last().map(|segment| segment.ident) {
-                    self.structs_used.insert(ident.to_string());
-                }
-            }
+        if let ExprKind::Struct(ref qpath, _, _) = expr.kind
+            && let QPath::Resolved(_, path) = qpath
+            && let Some(ident) = path.segments.last().map(|segment| segment.ident)
+        {
+            self.structs_used.insert(ident.to_string());
         }
         intravisit::walk_expr(self, expr);
     }
@@ -88,16 +86,13 @@ pub fn create_adt_impl_map(tcx: TyCtxt<'_>) -> AdtImplMap<'_> {
     let mut map = FxHashMap::default();
     for impl_item_id in tcx.hir_crate_items(()).impl_items() {
         let impl_item = tcx.hir_impl_item(impl_item_id);
-        match impl_item.kind {
-            ImplItemKind::Type(ty) => {
-                let impl_self_ty = tcx.type_of(ty.hir_id.owner).skip_binder();
-                if let ty::Adt(impl_self_adt_def, _impl_substs) = impl_self_ty.kind() {
-                    map.entry(impl_self_adt_def.did())
-                        .or_insert_with(Vec::new)
-                        .push((impl_item_id.owner_id.to_def_id(), impl_self_ty));
-                }
+        if let ImplItemKind::Type(ty) = impl_item.kind {
+            let impl_self_ty = tcx.type_of(ty.hir_id.owner).skip_binder();
+            if let ty::Adt(impl_self_adt_def, _impl_substs) = impl_self_ty.kind() {
+                map.entry(impl_self_adt_def.did())
+                    .or_insert_with(Vec::new)
+                    .push((impl_item_id.owner_id.to_def_id(), impl_self_ty));
             }
-            _ => (),
         }
     }
     map

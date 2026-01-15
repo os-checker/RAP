@@ -21,7 +21,7 @@ struct DefPaths {
 impl DefPaths {
     pub fn new(tcx: &TyCtxt<'_>) -> Self {
         Self {
-            str_from_utf8: DefPath::new("std::str::from_utf8", &tcx),
+            str_from_utf8: DefPath::new("std::str::from_utf8", tcx),
         }
     }
 }
@@ -37,10 +37,10 @@ fn extract_ancestor_set_if_is_str_from(
 ) -> Option<HashSet<Local>> {
     let def_paths = DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.str_from_utf8.last_def_id() {
-                return Some(graph.collect_ancestor_locals(node_idx, false));
-            }
+        if let NodeOp::Call(def_id) = op
+            && *def_id == def_paths.str_from_utf8.last_def_id()
+        {
+            return Some(graph.collect_ancestor_locals(node_idx, false));
         }
     }
     None
@@ -87,10 +87,10 @@ impl OptCheck for ArrayEncodingCheck {
                 if let Some(str_from_ancestor_set) =
                     extract_ancestor_set_if_is_str_from(graph, node_idx, node)
                 {
-                    if !common_ancestor
+                    if common_ancestor
                         .intersection(&str_from_ancestor_set)
                         .next()
-                        .is_some()
+                        .is_none()
                     {
                         self.record.clear();
                         return;

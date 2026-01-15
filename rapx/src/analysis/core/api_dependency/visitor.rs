@@ -46,7 +46,7 @@ impl<'tcx, 'a> FnVisitor<'tcx, 'a> {
 
     pub fn write_funcs<T: Write>(&self, f: &mut T) {
         for id in &self.apis {
-            write!(f, "{}\n", self.tcx.def_path_str(id)).expect("fail when write funcs");
+            writeln!(f, "{}", self.tcx.def_path_str(id)).expect("fail when write funcs");
         }
     }
 }
@@ -99,7 +99,7 @@ impl<'tcx, 'a> Visitor<'tcx> for FnVisitor<'tcx, 'a> {
 
         if !is_generic {
             let args = ty::GenericArgs::identity_for_item(self.tcx, fn_did);
-            self.graph.add_api(fn_did, &args);
+            self.graph.add_api(fn_did, args);
         }
 
         self.apis.push(fn_did);

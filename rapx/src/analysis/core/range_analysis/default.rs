@@ -69,8 +69,7 @@ pub struct RangeAnalyzer<'tcx, T: IntervalArithmetic + ConstConvert + Debug> {
     pub path_constraints: PathConstraintMap<'tcx>, // Path-sensitive constraints
 }
 
-impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> Analysis
-    for RangeAnalyzer<'tcx, T>
+impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> Analysis for RangeAnalyzer<'tcx, T>
 where
     T: IntervalArithmetic + ConstConvert + Debug,
 {
@@ -158,7 +157,7 @@ where
             }
         }
         Self {
-            tcx: tcx,
+            tcx,
             debug,
             ssa_def_id: ssa_id,
             essa_def_id: essa_id,
@@ -195,7 +194,7 @@ where
         let dir_path = PathBuf::from("cg_dot");
         fs::create_dir_all(dir_path.clone()).unwrap();
         let safe_filename = format!("{}_cg.dot", function_name);
-        let output_path = dir_path.join(format!("{}", safe_filename));
+        let output_path = dir_path.join(&safe_filename);
 
         let mut file = File::create(&output_path).expect("cannot create file");
         file.write_all(dot_output.as_bytes())
@@ -226,8 +225,8 @@ where
                     // Print the MIR after SSA/ESSA passes
                     rap_debug!("{:#?}", body_mut_ref.local_decls);
                     if self.debug {
-                        print_diff(self.tcx, body_mut_ref, def_id.into());
-                        print_mir_graph(self.tcx, body_mut_ref, def_id.into());
+                        print_diff(self.tcx, body_mut_ref, def_id);
+                        print_mir_graph(self.tcx, body_mut_ref, def_id);
                     }
 
                     self.ssa_places_mapping

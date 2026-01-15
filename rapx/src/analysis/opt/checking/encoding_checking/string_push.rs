@@ -40,11 +40,11 @@ pub struct StringPushCheck {
 fn extract_value_if_is_string_push(graph: &Graph, node: &GraphNode) -> Option<Local> {
     let def_paths = DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.string_push.last_def_id() {
-                let push_value_idx = graph.edges[node.in_edges[1]].src; //the secod parameter
-                return Some(push_value_idx);
-            }
+        if let NodeOp::Call(def_id) = op
+            && *def_id == def_paths.string_push.last_def_id()
+        {
+            let push_value_idx = graph.edges[node.in_edges[1]].src; //the secod parameter
+            return Some(push_value_idx);
         }
     }
     None
@@ -56,11 +56,11 @@ fn find_upside_string_new(graph: &Graph, node_idx: Local) -> Option<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.string_new.last_def_id() {
-                    string_new_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+            if let NodeOp::Call(def_id) = op
+                && *def_id == def_paths.string_new.last_def_id()
+            {
+                string_new_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -85,14 +85,14 @@ impl OptCheck for StringPushCheck {
     fn check(&mut self, graph: &Graph, tcx: &TyCtxt) {
         let _ = &DEFPATHS.get_or_init(|| DefPaths::new(tcx));
         for (node_idx, node) in graph.nodes.iter_enumerated() {
-            if let Some(pushed_value_idx) = extract_value_if_is_string_push(graph, node) {
-                if find_upside_string_new(graph, node_idx).is_some() {
-                    if !value_is_from_const(graph, pushed_value_idx) {
-                        self.record.clear(); // Warning: Not rigorous, push of other string may cause clear
-                        return;
-                    }
-                    self.record.push(node.span);
+            if let Some(pushed_value_idx) = extract_value_if_is_string_push(graph, node)
+                && find_upside_string_new(graph, node_idx).is_some()
+            {
+                if !value_is_from_const(graph, pushed_value_idx) {
+                    self.record.clear(); // Warning: Not rigorous, push of other string may cause clear
+                    return;
                 }
+                self.record.push(node.span);
             }
         }
     }

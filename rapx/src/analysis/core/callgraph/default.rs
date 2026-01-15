@@ -50,7 +50,7 @@ impl<'tcx> CallGraphAnalysis for CallGraphAnalyzer<'tcx> {
 impl<'tcx> CallGraphAnalyzer<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Self {
-            tcx: tcx,
+            tcx,
             graph: CallGraph::new(tcx),
         }
     }
@@ -63,7 +63,7 @@ impl<'tcx> CallGraphAnalyzer<'tcx> {
 
                 let body: &Body<'_> = match def_kind {
                     DefKind::Fn | DefKind::AssocFn | DefKind::Closure => {
-                        &self.tcx.optimized_mir(def_id)
+                        self.tcx.optimized_mir(def_id)
                     }
                     DefKind::Const
                     | DefKind::Static { .. }
@@ -71,7 +71,7 @@ impl<'tcx> CallGraphAnalyzer<'tcx> {
                     | DefKind::InlineConst
                     | DefKind::AnonConst => {
                         // NOTE: safer fallback for constants
-                        &self.tcx.mir_for_ctfe(def_id)
+                        self.tcx.mir_for_ctfe(def_id)
                     }
                     // These don't have MIR or shouldn't be visited
                     _ => {
@@ -81,7 +81,7 @@ impl<'tcx> CallGraphAnalyzer<'tcx> {
                 };
 
                 let mut call_graph_visitor =
-                    CallGraphVisitor::new(self.tcx, def_id.into(), body, &mut self.graph);
+                    CallGraphVisitor::new(self.tcx, def_id, body, &mut self.graph);
                 call_graph_visitor.visit();
             }
         }
@@ -108,7 +108,7 @@ impl<'tcx> CallGraph<'tcx> {
 
     /// Register a function to the call graph. Return true on insert, false if that DefId already exists.
     pub fn register_fn(&mut self, def_id: DefId) -> bool {
-        if let Some(_) = self.functions.iter().find(|func_id| **func_id == def_id) {
+        if self.functions.iter().any(|func_id| *func_id == def_id) {
             false
         } else {
             self.functions.insert(def_id);
@@ -123,7 +123,7 @@ impl<'tcx> CallGraph<'tcx> {
         callee_id: DefId,
         terminator_stmt: Option<&'tcx mir::Terminator<'tcx>>,
     ) {
-        let entry = self.fn_calls.entry(caller_id).or_insert_with(Vec::new);
+        let entry = self.fn_calls.entry(caller_id).or_default();
         entry.push((callee_id, terminator_stmt));
     }
 }
@@ -181,7 +181,7 @@ impl<'tcx> CallGraph<'tcx> {
             for (callee_id, terminator) in calls_vec {
                 callers_map
                     .entry(*callee_id)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push((caller_id, *terminator));
             }
         }

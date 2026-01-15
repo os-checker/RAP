@@ -79,11 +79,12 @@ fn get_cargo_tomls_deep_recursively(dir: &str) -> Vec<Utf8PathBuf> {
     walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_map(|entry| {
-            if let Ok(e) = entry {
-                if e.file_type().is_file() && e.file_name().to_str()? == "Cargo.toml" {
-                    let path = Utf8PathBuf::from_path_buf(e.into_path());
-                    return path.ok()?.canonicalize_utf8().ok();
-                }
+            if let Ok(e) = entry
+                && e.file_type().is_file()
+                && e.file_name().to_str()? == "Cargo.toml"
+            {
+                let path = Utf8PathBuf::from_path_buf(e.into_path());
+                return path.ok()?.canonicalize_utf8().ok();
             }
             None
         })

@@ -113,7 +113,7 @@ impl<'tcx> PropertyContract<'tcx> {
                 Self::check_arg_length(exprs.len(), 1, "ValidNum");
                 let bin_op = BinOp::Ne;
                 let length = Self::parse_length(tcx, def_id, &exprs[0], "ValidNum");
-                return Self::ValidNum(CisRange::new(bin_op, length));
+                Self::ValidNum(CisRange::new(bin_op, length))
             }
             "ValidString" => Self::ValidString,
             "ValidCStr" => Self::ValidCStr,
@@ -177,7 +177,7 @@ impl<'tcx> PropertyContract<'tcx> {
         if ty.is_none() {
             rap_error!("Cannot get type in {:?} Tag!", sp);
         }
-        return ty.unwrap();
+        ty.unwrap()
     }
 
     // -------- cis range parser ----------
@@ -187,7 +187,7 @@ impl<'tcx> PropertyContract<'tcx> {
         } else if parse_expr_into_number(expr).is_some() {
             CisRangeItem::Value(parse_expr_into_number(expr).unwrap())
         } else if Self::parse_arg_length(expr).is_some() {
-            return Self::parse_arg_length(expr).unwrap();
+            Self::parse_arg_length(expr).unwrap()
         } else {
             rap_error!(
                 "Range length error in {:?} Tag! Unknown anntation:\n{:?}",
@@ -199,15 +199,15 @@ impl<'tcx> PropertyContract<'tcx> {
     }
 
     fn parse_arg_length(expr: &Expr) -> Option<CisRangeItem> {
-        if let Expr::Path(expr_path) = expr {
-            if let Some(ident) = expr_path.path.get_ident() {
-                let s = ident.to_string();
+        if let Expr::Path(expr_path) = expr
+            && let Some(ident) = expr_path.path.get_ident()
+        {
+            let s = ident.to_string();
 
-                if let Some(num_str) = s.strip_prefix("Arg_") {
-                    if let Ok(idx) = num_str.parse::<usize>() {
-                        return Some(CisRangeItem::Var(idx, Vec::new()));
-                    }
-                }
+            if let Some(num_str) = s.strip_prefix("Arg_")
+                && let Ok(idx) = num_str.parse::<usize>()
+            {
+                return Some(CisRangeItem::Var(idx, Vec::new()));
             }
         }
         None

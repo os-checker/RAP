@@ -69,10 +69,10 @@ struct IndexFinder {
 
 impl intravisit::Visitor<'_> for LtFinder {
     fn visit_expr(&mut self, ex: &Expr) {
-        if let ExprKind::Binary(op, ..) = ex.kind {
-            if op.node == BinOpKind::Lt {
-                self.record.push(ex.span);
-            }
+        if let ExprKind::Binary(op, ..) = ex.kind
+            && op.node == BinOpKind::Lt
+        {
+            self.record.push(ex.span);
         }
         intravisit::walk_expr(self, ex);
     }
@@ -112,21 +112,20 @@ impl OptCheck for BoundsLenCheck {
     fn check(&mut self, graph: &Graph, tcx: &TyCtxt) {
         let _ = &DEFPATHS.get_or_init(|| DefPaths::new(tcx));
         for (node_idx, node) in graph.nodes.iter_enumerated() {
-            if let Some(upperbound_node_idx) = extract_upperbound_node_if_ops_range(graph, node) {
-                if let Some(vec_len_node_idx) = find_upside_len_node(graph, upperbound_node_idx) {
-                    let maybe_vec_node_idx = graph.get_upside_idx(vec_len_node_idx, 0).unwrap();
-                    let maybe_vec_node_idxs =
-                        graph.collect_equivalent_locals(maybe_vec_node_idx, true);
-                    let mut index_record = vec![];
-                    for index_node_idx in find_downside_index_node(graph, node_idx).into_iter() {
-                        let maybe_vec_node_idx = graph.get_upside_idx(index_node_idx, 0).unwrap();
-                        if maybe_vec_node_idxs.contains(&maybe_vec_node_idx) {
-                            index_record.push(index_node_idx);
-                        }
+            if let Some(upperbound_node_idx) = extract_upperbound_node_if_ops_range(graph, node)
+                && let Some(vec_len_node_idx) = find_upside_len_node(graph, upperbound_node_idx)
+            {
+                let maybe_vec_node_idx = graph.get_upside_idx(vec_len_node_idx, 0).unwrap();
+                let maybe_vec_node_idxs = graph.collect_equivalent_locals(maybe_vec_node_idx, true);
+                let mut index_record = vec![];
+                for index_node_idx in find_downside_index_node(graph, node_idx).into_iter() {
+                    let maybe_vec_node_idx = graph.get_upside_idx(index_node_idx, 0).unwrap();
+                    if maybe_vec_node_idxs.contains(&maybe_vec_node_idx) {
+                        index_record.push(index_node_idx);
                     }
-                    if !index_record.is_empty() {
-                        self.record.push((upperbound_node_idx, index_record));
-                    }
+                }
+                if !index_record.is_empty() {
+                    self.record.push((upperbound_node_idx, index_record));
                 }
             }
         }
@@ -186,15 +185,13 @@ fn find_indexed_node_from_index(graph: &Graph, index_node_idx: Local) -> Option<
         let dst_node_idx = graph.edges[*edge_idx].dst;
         let dst_node = &graph.nodes[dst_node_idx];
         for op in dst_node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.ops_index.last_def_id()
-                    || *def_id == def_paths.ops_index_mut.last_def_id()
-                {
-                    let index_operator_node =
-                        &graph.nodes[graph.edges[index_node.out_edges[0]].dst];
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.ops_index.last_def_id()
+                    || *def_id == def_paths.ops_index_mut.last_def_id())
+            {
+                let index_operator_node = &graph.nodes[graph.edges[index_node.out_edges[0]].dst];
 
-                    return Some(graph.edges[index_operator_node.in_edges[0]].src);
-                }
+                return Some(graph.edges[index_operator_node.in_edges[0]].src);
             }
             if graph.is_marker(dst_node_idx) {
                 for edge_idx_ in dst_node.in_edges.iter() {
@@ -213,11 +210,11 @@ fn extract_upperbound_node_if_ops_range(graph: &Graph, node: &GraphNode) -> Opti
     let def_paths = &DEFPATHS.get().unwrap();
     let target_def_id = def_paths.ops_range.last_def_id();
     for op in node.ops.iter() {
-        if let NodeOp::Aggregate(AggKind::Adt(def_id)) = op {
-            if *def_id == target_def_id {
-                let upperbound_edge = &graph.edges[node.in_edges[1]]; // the second field
-                return Some(upperbound_edge.src);
-            }
+        if let NodeOp::Aggregate(AggKind::Adt(def_id)) = op
+            && *def_id == target_def_id
+        {
+            let upperbound_edge = &graph.edges[node.in_edges[1]]; // the second field
+            return Some(upperbound_edge.src);
         }
     }
     None
@@ -230,13 +227,12 @@ fn find_upside_len_node(graph: &Graph, node_idx: Local) -> Option<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.vec_len.last_def_id()
-                    || *def_id == def_paths.slice_len.last_def_id()
-                {
-                    len_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.vec_len.last_def_id()
+                    || *def_id == def_paths.slice_len.last_def_id())
+            {
+                len_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -260,13 +256,12 @@ fn find_downside_index_node(graph: &Graph, node_idx: Local) -> Vec<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.ops_index.last_def_id()
-                    || *def_id == def_paths.ops_index_mut.last_def_id()
-                {
-                    index_node_idxs.push(idx);
-                    break;
-                }
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.ops_index.last_def_id()
+                    || *def_id == def_paths.ops_index_mut.last_def_id())
+            {
+                index_node_idxs.push(idx);
+                break;
             }
         }
         DFSStatus::Continue

@@ -42,8 +42,8 @@ impl<'tcx> intravisit::Visitor<'tcx> for NextFinder<'tcx> {
                 .typeck_results
                 .type_dependent_def_id(ex.hir_id)
                 .unwrap();
-            let next_def_id = (&DEFPATHS.get().unwrap()).iter_next.last_def_id();
-            let chain_def_id = (&DEFPATHS.get().unwrap()).iter_chain.last_def_id();
+            let next_def_id = DEFPATHS.get().unwrap().iter_next.last_def_id();
+            let chain_def_id = DEFPATHS.get().unwrap().iter_chain.last_def_id();
             if def_id == next_def_id {
                 self.next_record.push(span);
             }

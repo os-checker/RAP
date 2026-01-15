@@ -83,12 +83,11 @@ pub fn check_visibility(tcx: TyCtxt, func_defid: DefId) -> bool {
 
 pub fn is_re_exported(tcx: TyCtxt, target_defid: DefId, module_defid: LocalDefId) -> bool {
     for child in tcx.module_children_local(module_defid) {
-        if child.vis.is_public() {
-            if let Some(def_id) = child.res.opt_def_id() {
-                if def_id == target_defid {
-                    return true;
-                }
-            }
+        if child.vis.is_public()
+            && let Some(def_id) = child.res.opt_def_id()
+            && def_id == target_defid
+        {
+            return true;
         }
     }
     false
@@ -169,10 +168,10 @@ pub fn get_std_contracts(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<ContractEntry> {
     let cleaned_path_name = get_cleaned_def_path_name(tcx, def_id);
     let json_data: serde_json::Value = get_sp_tags_and_args_json();
 
-    if let Some(entries) = json_data.get(&cleaned_path_name) {
-        if let Ok(contracts) = serde_json::from_value::<Vec<ContractEntry>>(entries.clone()) {
-            return contracts;
-        }
+    if let Some(entries) = json_data.get(&cleaned_path_name)
+        && let Ok(contracts) = serde_json::from_value::<Vec<ContractEntry>>(entries.clone())
+    {
+        return contracts;
     }
     Vec::new()
 }
@@ -181,38 +180,38 @@ pub fn get_sp(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<String> {
     let cleaned_path_name = get_cleaned_def_path_name(tcx, def_id);
     let json_data: serde_json::Value = get_sp_tags_json();
 
-    if let Some(function_info) = json_data.get(&cleaned_path_name) {
-        if let Some(sp_list) = function_info.get("0") {
-            let mut result = HashSet::new();
-            if let Some(sp_array) = sp_list.as_array() {
-                for sp in sp_array {
-                    if let Some(sp_name) = sp.as_str() {
-                        result.insert(sp_name.to_string());
-                    }
+    if let Some(function_info) = json_data.get(&cleaned_path_name)
+        && let Some(sp_list) = function_info.get("0")
+    {
+        let mut result = HashSet::new();
+        if let Some(sp_array) = sp_list.as_array() {
+            for sp in sp_array {
+                if let Some(sp_name) = sp.as_str() {
+                    result.insert(sp_name.to_string());
                 }
             }
-            return result;
         }
+        return result;
     }
     HashSet::new()
 }
 
 pub fn get_struct_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            let ty = tcx.type_of(impl_id).skip_binder();
-            let type_name = ty.to_string();
-            let struct_name = type_name
-                .split('<')
-                .next()
-                .unwrap_or("")
-                .split("::")
-                .last()
-                .unwrap_or("")
-                .to_string();
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let Some(impl_id) = assoc_item.impl_container(tcx)
+    {
+        let ty = tcx.type_of(impl_id).skip_binder();
+        let type_name = ty.to_string();
+        let struct_name = type_name
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .split("::")
+            .last()
+            .unwrap_or("")
+            .to_string();
 
-            return Some(struct_name);
-        }
+        return Some(struct_name);
     }
     None
 }
@@ -281,14 +280,14 @@ pub fn get_type(tcx: TyCtxt<'_>, def_id: DefId) -> FnKind {
             _ => todo!(),
         }
     }
-    return FnKind::Fn;
+    FnKind::Fn
 }
 
 pub fn get_adt_ty(tcx: TyCtxt, def_id: DefId) -> Option<Ty> {
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            return Some(tcx.type_of(impl_id).skip_binder());
-        }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let Some(impl_id) = assoc_item.impl_container(tcx)
+    {
+        return Some(tcx.type_of(impl_id).skip_binder());
     }
     None
 }
@@ -342,41 +341,38 @@ pub fn get_rawptr_deref(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<Local> {
         for bb in body.basic_blocks.iter() {
             for stmt in &bb.statements {
                 if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
-                    if place_has_raw_deref(tcx, &body, lhs) {
+                    if place_has_raw_deref(tcx, body, lhs) {
                         raw_ptrs.insert(lhs.local);
                     }
                     if let Rvalue::Use(op) = rhs {
                         match op {
                             Operand::Copy(place) | Operand::Move(place) => {
-                                if place_has_raw_deref(tcx, &body, place) {
+                                if place_has_raw_deref(tcx, body, place) {
                                     raw_ptrs.insert(place.local);
                                 }
                             }
                             _ => {}
                         }
                     }
-                    if let Rvalue::Ref(_, _, place) = rhs {
-                        if place_has_raw_deref(tcx, &body, place) {
-                            raw_ptrs.insert(place.local);
-                        }
+                    if let Rvalue::Ref(_, _, place) = rhs
+                        && place_has_raw_deref(tcx, body, place)
+                    {
+                        raw_ptrs.insert(place.local);
                     }
                 }
             }
-            if let Some(terminator) = &bb.terminator {
-                match &terminator.kind {
-                    rustc_middle::mir::TerminatorKind::Call { args, .. } => {
-                        for arg in args {
-                            match arg.node {
-                                Operand::Copy(place) | Operand::Move(place) => {
-                                    if place_has_raw_deref(tcx, &body, &place) {
-                                        raw_ptrs.insert(place.local);
-                                    }
-                                }
-                                _ => {}
+            if let Some(terminator) = &bb.terminator
+                && let rustc_middle::mir::TerminatorKind::Call { args, .. } = &terminator.kind
+            {
+                for arg in args {
+                    match arg.node {
+                        Operand::Copy(place) | Operand::Move(place) => {
+                            if place_has_raw_deref(tcx, body, &place) {
+                                raw_ptrs.insert(place.local);
                             }
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
@@ -427,12 +423,11 @@ pub fn collect_global_local_pairs(tcx: TyCtxt<'_>, def_id: DefId) -> HashMap<Def
 
     for bb in body.basic_blocks.iter() {
         for stmt in &bb.statements {
-            if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind {
-                if let Rvalue::Use(Operand::Constant(c)) = rhs {
-                    if let Some(static_def_id) = c.check_static_ptr(tcx) {
-                        globals.entry(static_def_id).or_default().push(lhs.local);
-                    }
-                }
+            if let StatementKind::Assign(box (lhs, rhs)) = &stmt.kind
+                && let Rvalue::Use(Operand::Constant(c)) = rhs
+                && let Some(static_def_id) = c.check_static_ptr(tcx)
+            {
+                globals.entry(static_def_id).or_default().push(lhs.local);
             }
         }
     }
@@ -445,14 +440,12 @@ pub fn get_unsafe_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
     if tcx.is_mir_available(def_id) {
         let body = tcx.optimized_mir(def_id);
         for bb in body.basic_blocks.iter() {
-            if let TerminatorKind::Call { func, .. } = &bb.terminator().kind {
-                if let Operand::Constant(func_constant) = func {
-                    if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
-                        if check_safety(tcx, *callee_def_id) == Safety::Unsafe {
-                            unsafe_callees.insert(*callee_def_id);
-                        }
-                    }
-                }
+            if let TerminatorKind::Call { func, .. } = &bb.terminator().kind
+                && let Operand::Constant(func_constant) = func
+                && let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind()
+                && check_safety(tcx, *callee_def_id) == Safety::Unsafe
+            {
+                unsafe_callees.insert(*callee_def_id);
             }
         }
     }
@@ -464,12 +457,11 @@ pub fn get_all_callees(tcx: TyCtxt<'_>, def_id: DefId) -> HashSet<DefId> {
     if tcx.is_mir_available(def_id) {
         let body = tcx.optimized_mir(def_id);
         for bb in body.basic_blocks.iter() {
-            if let TerminatorKind::Call { func, .. } = &bb.terminator().kind {
-                if let Operand::Constant(func_constant) = func {
-                    if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
-                        callees.insert(*callee_def_id);
-                    }
-                }
+            if let TerminatorKind::Call { func, .. } = &bb.terminator().kind
+                && let Operand::Constant(func_constant) = func
+                && let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind()
+            {
+                callees.insert(*callee_def_id);
             }
         }
     }
@@ -481,29 +473,26 @@ pub fn get_impls_for_struct(tcx: TyCtxt<'_>, struct_def_id: DefId) -> Vec<DefId>
     let mut impls = Vec::new();
     for item_id in tcx.hir_crate_items(()).free_items() {
         let item = tcx.hir_item(item_id);
-        if let rustc_hir::ItemKind::Impl(impl_details) = &item.kind {
-            if let rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(_, path)) =
+        if let rustc_hir::ItemKind::Impl(impl_details) = &item.kind
+            && let rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(_, path)) =
                 &impl_details.self_ty.kind
-            {
-                if let rustc_hir::def::Res::Def(_, def_id) = path.res {
-                    if def_id == struct_def_id {
-                        impls.push(item_id.owner_id.to_def_id());
-                    }
-                }
-            }
+            && let rustc_hir::def::Res::Def(_, def_id) = path.res
+            && def_id == struct_def_id
+        {
+            impls.push(item_id.owner_id.to_def_id());
         }
     }
     impls
 }
 
 pub fn get_adt_def_id_by_adt_method(tcx: TyCtxt<'_>, def_id: DefId) -> Option<DefId> {
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            // get struct ty
-            let ty = tcx.type_of(impl_id).skip_binder();
-            if let Some(adt_def) = ty.ty_adt_def() {
-                return Some(adt_def.did());
-            }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let Some(impl_id) = assoc_item.impl_container(tcx)
+    {
+        // get struct ty
+        let ty = tcx.type_of(impl_id).skip_binder();
+        if let Some(adt_def) = ty.ty_adt_def() {
+            return Some(adt_def.did());
         }
     }
     None
@@ -512,14 +501,14 @@ pub fn get_adt_def_id_by_adt_method(tcx: TyCtxt<'_>, def_id: DefId) -> Option<De
 // get the pointee or wrapped type
 pub fn get_pointee(matched_ty: Ty<'_>) -> Ty<'_> {
     // progress_info!("get_pointee: > {:?} as type: {:?}", matched_ty, matched_ty.kind());
-    let pointee = if let ty::RawPtr(ty_mut, _) = matched_ty.kind() {
+
+    if let ty::RawPtr(ty_mut, _) = matched_ty.kind() {
         get_pointee(*ty_mut)
     } else if let ty::Ref(_, referred_ty, _) = matched_ty.kind() {
         get_pointee(*referred_ty)
     } else {
         matched_ty
-    };
-    pointee
+    }
 }
 
 pub fn is_ptr(matched_ty: Ty<'_>) -> bool {
@@ -544,20 +533,16 @@ pub fn is_slice(matched_ty: Ty) -> Option<Ty> {
 }
 
 pub fn has_mut_self_param(tcx: TyCtxt, def_id: DefId) -> bool {
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        match assoc_item.kind {
-            AssocKind::Fn { has_self, .. } => {
-                if has_self && tcx.is_mir_available(def_id) {
-                    let body = tcx.optimized_mir(def_id);
-                    let fst_arg = body.local_decls[Local::from_usize(1)].clone();
-                    let ty = fst_arg.ty;
-                    let is_mut_ref =
-                        matches!(ty.kind(), ty::Ref(_, _, mutbl) if *mutbl == Mutability::Mut);
-                    return fst_arg.mutability.is_mut() || is_mut_ref;
-                }
-            }
-            _ => (),
-        }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let AssocKind::Fn { has_self, .. } = assoc_item.kind
+        && has_self
+        && tcx.is_mir_available(def_id)
+    {
+        let body = tcx.optimized_mir(def_id);
+        let fst_arg = body.local_decls[Local::from_usize(1)].clone();
+        let ty = fst_arg.ty;
+        let is_mut_ref = matches!(ty.kind(), ty::Ref(_, _, mutbl) if *mutbl == Mutability::Mut);
+        return fst_arg.mutability.is_mut() || is_mut_ref;
     }
     false
 }
@@ -591,12 +576,11 @@ where
 
 pub fn match_std_unsafe_chains_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Vec<String> {
     let mut results = Vec::new();
-    if let TerminatorKind::Call { func, .. } = &terminator.kind {
-        if let Operand::Constant(func_constant) = func {
-            if let ty::FnDef(callee_def_id, _raw_list) = func_constant.const_.ty().kind() {
-                let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
-            }
-        }
+    if let TerminatorKind::Call { func, .. } = &terminator.kind
+        && let Operand::Constant(func_constant) = func
+        && let ty::FnDef(callee_def_id, _raw_list) = func_constant.const_.ty().kind()
+    {
+        let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
     }
     results
 }
@@ -638,15 +622,14 @@ pub fn get_all_std_unsafe_callees_block_id(tcx: TyCtxt, def_id: DefId) -> Vec<us
 
 pub fn match_std_unsafe_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Vec<String> {
     let mut results = Vec::new();
-    if let TerminatorKind::Call { func, .. } = &terminator.kind {
-        if let Operand::Constant(func_constant) = func {
-            if let ty::FnDef(callee_def_id, _raw_list) = func_constant.const_.ty().kind() {
-                let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
-                // rap_info!("{func_name}");
-                if parse_unsafe_api(&func_name).is_some() {
-                    results.push(func_name);
-                }
-            }
+    if let TerminatorKind::Call { func, .. } = &terminator.kind
+        && let Operand::Constant(func_constant) = func
+        && let ty::FnDef(callee_def_id, _raw_list) = func_constant.const_.ty().kind()
+    {
+        let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
+        // rap_info!("{func_name}");
+        if parse_unsafe_api(&func_name).is_some() {
+            results.push(func_name);
         }
     }
     results
@@ -662,11 +645,11 @@ pub fn is_strict_ty_convert<'tcx>(tcx: TyCtxt<'tcx>, src_ty: Ty<'tcx>, dst_ty: T
 pub fn is_strict_ty<'tcx>(tcx: TyCtxt<'tcx>, ori_ty: Ty<'tcx>) -> bool {
     let ty = get_pointee(ori_ty);
     let mut flag = false;
-    if let TyKind::Adt(adt_def, substs) = ty.kind() {
-        if adt_def.is_struct() {
-            for field_def in adt_def.all_fields() {
-                flag |= is_strict_ty(tcx, field_def.ty(tcx, substs))
-            }
+    if let TyKind::Adt(adt_def, substs) = ty.kind()
+        && adt_def.is_struct()
+    {
+        for field_def in adt_def.all_fields() {
+            flag |= is_strict_ty(tcx, field_def.ty(tcx, substs))
         }
     }
     ty.is_bool() || ty.is_str() || flag
@@ -763,7 +746,7 @@ pub fn generate_contract_from_annotation_without_field_types(
 
 /// Filter the function which contains "rapx::proof"
 pub fn is_verify_target_func(tcx: TyCtxt, def_id: DefId) -> bool {
-    for attr in tcx.get_all_attrs(def_id).into_iter() {
+    for attr in tcx.get_all_attrs(def_id).iter() {
         let attr_str = rustc_hir_pretty::attribute_to_string(&tcx, attr);
         // Find proof placeholder
         if attr_str.contains("#[rapx::proof(proof)]") {
@@ -782,11 +765,11 @@ pub fn generate_contract_from_annotation(
     def_id: DefId,
 ) -> Vec<(usize, Vec<(usize, Ty)>, PropertyContract)> {
     const REGISTER_TOOL: &str = "rapx";
-    let tool_attrs = tcx.get_all_attrs(def_id).into_iter().filter(|attr| {
-        if let Attribute::Unparsed(tool_attr) = attr {
-            if tool_attr.path.segments[0].as_str() == REGISTER_TOOL {
-                return true;
-            }
+    let tool_attrs = tcx.get_all_attrs(def_id).iter().filter(|attr| {
+        if let Attribute::Unparsed(tool_attr) = attr
+            && tool_attr.path.segments[0].as_str() == REGISTER_TOOL
+        {
+            return true;
         }
         false
     });
@@ -846,9 +829,9 @@ pub fn parse_expr_into_local_and_ty<'tcx>(
     def_id: DefId,
     expr: &Expr,
 ) -> Option<(usize, Vec<(usize, Ty<'tcx>)>, Ty<'tcx>)> {
-    if let Some((base_ident, fields)) = access_ident_recursive(&expr) {
+    if let Some((base_ident, fields)) = access_ident_recursive(expr) {
         let (param_names, param_tys) = parse_signature(tcx, def_id);
-        if param_names[0] == "0".to_string() {
+        if param_names[0] == "0" {
             return None;
         }
         if let Some(param_index) = param_names.iter().position(|name| name == &base_ident) {
@@ -860,13 +843,13 @@ pub fn parse_expr_into_local_and_ty<'tcx>(
                 if let rustc_middle::ty::TyKind::Adt(adt_def, arg_list) = *peeled_ty.kind() {
                     let variant = adt_def.non_enum_variant();
                     // 1. if field_name is number, then parse it as usize
-                    if let Ok(field_idx) = field_name.parse::<usize>() {
-                        if field_idx < variant.fields.len() {
-                            current_ty = variant.fields[rustc_abi::FieldIdx::from_usize(field_idx)]
-                                .ty(tcx, arg_list);
-                            field_indices.push((field_idx, current_ty));
-                            continue;
-                        }
+                    if let Ok(field_idx) = field_name.parse::<usize>()
+                        && field_idx < variant.fields.len()
+                    {
+                        current_ty = variant.fields[rustc_abi::FieldIdx::from_usize(field_idx)]
+                            .ty(tcx, arg_list);
+                        field_indices.push((field_idx, current_ty));
+                        continue;
                     }
                     // 2. if field_name is String, then compare it with current ty's field names
                     if let Some((idx, _)) = variant
@@ -902,17 +885,17 @@ pub fn parse_expr_into_local_and_ty<'tcx>(
 pub fn parse_signature<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> (Vec<String>, Vec<Ty<'tcx>>) {
     // 0. If the def id is local
     if def_id.as_local().is_some() {
-        return parse_local_signature(tcx, def_id);
+        parse_local_signature(tcx, def_id)
     } else {
         rap_debug!("{:?} is not local def id.", def_id);
-        return parse_outside_signature(tcx, def_id);
-    };
+        parse_outside_signature(tcx, def_id)
+    }
 }
 
 /// Return the Vecs of args' names and types of outside functions.
 fn parse_outside_signature<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> (Vec<String>, Vec<Ty<'tcx>>) {
     let sig = tcx.fn_sig(def_id).skip_binder();
-    let param_tys: Vec<Ty<'tcx>> = sig.inputs().skip_binder().iter().copied().collect();
+    let param_tys: Vec<Ty<'tcx>> = sig.inputs().skip_binder().to_vec();
 
     // 1. check pre-defined std unsafe api signature
     if let Some(args_name) = get_known_std_names(tcx, def_id) {
@@ -933,7 +916,7 @@ fn parse_outside_signature<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> (Vec<Strin
         args_name,
         param_tys
     );
-    return (args_name, param_tys);
+    (args_name, param_tys)
 }
 
 /// We use a json to record known std apis' arg names.
@@ -943,21 +926,21 @@ fn get_known_std_names<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Vec<Str
     let std_func_name = get_cleaned_def_path_name(tcx, def_id);
     let json_data: serde_json::Value = get_std_api_signature_json();
 
-    if let Some(arg_info) = json_data.get(&std_func_name) {
-        if let Some(args_name) = arg_info.as_array() {
-            // set default value to arg name
-            if args_name.len() == 0 {
-                return Some(vec!["0".to_string()]);
-            }
-            // iterate and collect
-            let mut result = Vec::new();
-            for arg in args_name {
-                if let Some(sp_name) = arg.as_str() {
-                    result.push(sp_name.to_string());
-                }
-            }
-            return Some(result);
+    if let Some(arg_info) = json_data.get(&std_func_name)
+        && let Some(args_name) = arg_info.as_array()
+    {
+        // set default value to arg name
+        if args_name.is_empty() {
+            return Some(vec!["0".to_string()]);
         }
+        // iterate and collect
+        let mut result = Vec::new();
+        for arg in args_name {
+            if let Some(sp_name) = arg.as_str() {
+                result.push(sp_name.to_string());
+            }
+        }
+        return Some(result);
     }
     None
 }
@@ -967,7 +950,7 @@ pub fn parse_local_signature(tcx: TyCtxt, def_id: DefId) -> (Vec<String>, Vec<Ty
     // 1. parse local def_id and get arg list
     let local_def_id = def_id.as_local().unwrap();
     let hir_body = tcx.hir_body_owned_by(local_def_id);
-    if hir_body.params.len() == 0 {
+    if hir_body.params.is_empty() {
         return (vec!["0".to_string()], Vec::new());
     }
     // 2. contruct the vec of param and param ty
@@ -1029,10 +1012,10 @@ pub fn access_ident_recursive(expr: &Expr) -> Option<(String, Vec<String>)> {
 
 /// parse expr into number.
 pub fn parse_expr_into_number(expr: &Expr) -> Option<usize> {
-    if let Expr::Lit(expr_lit) = expr {
-        if let syn::Lit::Int(lit_int) = &expr_lit.lit {
-            return lit_int.base10_parse::<usize>().ok();
-        }
+    if let Expr::Lit(expr_lit) = expr
+        && let syn::Lit::Int(lit_int) = &expr_lit.lit
+    {
+        return lit_int.base10_parse::<usize>().ok();
     }
     None
 }
@@ -1059,7 +1042,7 @@ pub fn match_ty_with_ident(tcx: TyCtxt, def_id: DefId, type_ident: String) -> Op
         return Some(primitive_ty);
     }
     // 2. Check if the identifier matches any generic type parameter
-    return find_generic_param(tcx, def_id, type_ident.clone());
+    find_generic_param(tcx, def_id, type_ident.clone())
     // 3. Check if the identifier matches any user-defined type in the parameters
     // find_user_defined_type(tcx, def_id, type_ident)
 }
@@ -1155,14 +1138,11 @@ pub fn reflect_generic<'tcx>(
     ty: Ty<'tcx>,
 ) -> Ty<'tcx> {
     let mut actual_ty = ty;
-    match ty.kind() {
-        TyKind::Param(param_ty) => {
-            let generic_name = param_ty.name.to_string();
-            if let Some(actual_ty_from_map) = generic_mapping.get(&generic_name) {
-                actual_ty = *actual_ty_from_map;
-            }
+    if let TyKind::Param(param_ty) = ty.kind() {
+        let generic_name = param_ty.name.to_string();
+        if let Some(actual_ty_from_map) = generic_mapping.get(&generic_name) {
+            actual_ty = *actual_ty_from_map;
         }
-        _ => {}
     }
     rap_debug!(
         "peel generic ty for {:?}, actual_ty is {:?}",
@@ -1254,10 +1234,10 @@ fn find_unsafe_callees_in_function(tcx: TyCtxt, def_id: DefId) -> Vec<(DefId, St
 
     if let Some(body) = try_get_mir(tcx, def_id) {
         for bb in body.basic_blocks.iter() {
-            if let Some(terminator) = &bb.terminator {
-                if let Some((callee_def_id, callee_name)) = extract_unsafe_callee(tcx, terminator) {
-                    callees.push((callee_def_id, callee_name));
-                }
+            if let Some(terminator) = &bb.terminator
+                && let Some((callee_def_id, callee_name)) = extract_unsafe_callee(tcx, terminator)
+            {
+                callees.push((callee_def_id, callee_name));
             }
         }
     }
@@ -1266,15 +1246,13 @@ fn find_unsafe_callees_in_function(tcx: TyCtxt, def_id: DefId) -> Vec<(DefId, St
 }
 
 fn extract_unsafe_callee(tcx: TyCtxt<'_>, terminator: &Terminator<'_>) -> Option<(DefId, String)> {
-    if let TerminatorKind::Call { func, .. } = &terminator.kind {
-        if let Operand::Constant(func_constant) = func {
-            if let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind() {
-                if check_safety(tcx, *callee_def_id) == Safety::Unsafe {
-                    let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
-                    return Some((*callee_def_id, func_name));
-                }
-            }
-        }
+    if let TerminatorKind::Call { func, .. } = &terminator.kind
+        && let Operand::Constant(func_constant) = func
+        && let ty::FnDef(callee_def_id, _) = func_constant.const_.ty().kind()
+        && check_safety(tcx, *callee_def_id) == Safety::Unsafe
+    {
+        let func_name = get_cleaned_def_path_name(tcx, *callee_def_id);
+        return Some((*callee_def_id, func_name));
     }
     None
 }
@@ -1418,16 +1396,14 @@ pub fn generate_mir_cfg_dot<'tcx>(
                     is_drop_related = true;
                 }
                 TerminatorKind::Call { func, .. } => {
-                    if let Operand::Constant(c) = func {
-                        if let ty::FnDef(def_id, _) = *c.ty().kind() {
-                            if def_id == drop()
-                                || def_id == drop_in_place()
-                                || def_id == manually_drop()
-                                || dealloc_opt().map(|f| f == def_id).unwrap_or(false)
-                            {
-                                is_drop_related = true;
-                            }
-                        }
+                    if let Operand::Constant(c) = func
+                        && let ty::FnDef(def_id, _) = *c.ty().kind()
+                        && (def_id == drop()
+                            || def_id == drop_in_place()
+                            || def_id == manually_drop()
+                            || dealloc_opt().map(|f| f == def_id).unwrap_or(false))
+                    {
+                        is_drop_related = true;
                     }
                 }
                 _ => {}
@@ -1455,9 +1431,7 @@ pub fn generate_mir_cfg_dot<'tcx>(
 
         if let Some(terminator) = &bb_data.terminator {
             for target in terminator.successors() {
-                let edge_label = match terminator.kind {
-                    _ => "".to_string(),
-                };
+                let edge_label = "".to_string();
 
                 dot_content.push_str(&format!(
                     "    BB{} -> BB{} [label=\"{}\"];\n",
@@ -1527,21 +1501,20 @@ pub fn get_cons(tcx: TyCtxt<'_>, def_id: DefId) -> Vec<DefId> {
     if tcx.def_kind(def_id) == DefKind::Fn || get_type(tcx, def_id) == FnKind::Constructor {
         return cons;
     }
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            // get struct ty
-            let ty = tcx.type_of(impl_id).skip_binder();
-            if let Some(adt_def) = ty.ty_adt_def() {
-                let adt_def_id = adt_def.did();
-                let impls = tcx.inherent_impls(adt_def_id);
-                for impl_def_id in impls {
-                    for item in tcx.associated_item_def_ids(impl_def_id) {
-                        if (tcx.def_kind(item) == DefKind::Fn
-                            || tcx.def_kind(item) == DefKind::AssocFn)
-                            && get_type(tcx, *item) == FnKind::Constructor
-                        {
-                            cons.push(*item);
-                        }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let Some(impl_id) = assoc_item.impl_container(tcx)
+    {
+        // get struct ty
+        let ty = tcx.type_of(impl_id).skip_binder();
+        if let Some(adt_def) = ty.ty_adt_def() {
+            let adt_def_id = adt_def.did();
+            let impls = tcx.inherent_impls(adt_def_id);
+            for impl_def_id in impls {
+                for item in tcx.associated_item_def_ids(impl_def_id) {
+                    if (tcx.def_kind(item) == DefKind::Fn || tcx.def_kind(item) == DefKind::AssocFn)
+                        && get_type(tcx, *item) == FnKind::Constructor
+                    {
+                        cons.push(*item);
                     }
                 }
             }
@@ -1555,25 +1528,25 @@ pub fn append_fn_with_types(tcx: TyCtxt, def_id: DefId) -> FnInfo {
 }
 pub fn search_constructor(tcx: TyCtxt, def_id: DefId) -> Vec<DefId> {
     let mut constructors = Vec::new();
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            // get struct ty
-            let ty = tcx.type_of(impl_id).skip_binder();
-            if let Some(adt_def) = ty.ty_adt_def() {
-                let adt_def_id = adt_def.did();
-                let impl_vec = get_impls_for_struct(tcx, adt_def_id);
-                for impl_id in impl_vec {
-                    let associated_items = tcx.associated_items(impl_id);
-                    for item in associated_items.in_definition_order() {
-                        if let ty::AssocKind::Fn {
-                            name: _,
-                            has_self: _,
-                        } = item.kind
-                        {
-                            let item_def_id = item.def_id;
-                            if get_type(tcx, item_def_id) == FnKind::Constructor {
-                                constructors.push(item_def_id);
-                            }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let Some(impl_id) = assoc_item.impl_container(tcx)
+    {
+        // get struct ty
+        let ty = tcx.type_of(impl_id).skip_binder();
+        if let Some(adt_def) = ty.ty_adt_def() {
+            let adt_def_id = adt_def.did();
+            let impl_vec = get_impls_for_struct(tcx, adt_def_id);
+            for impl_id in impl_vec {
+                let associated_items = tcx.associated_items(impl_id);
+                for item in associated_items.in_definition_order() {
+                    if let ty::AssocKind::Fn {
+                        name: _,
+                        has_self: _,
+                    } = item.kind
+                    {
+                        let item_def_id = item.def_id;
+                        if get_type(tcx, item_def_id) == FnKind::Constructor {
+                            constructors.push(item_def_id);
                         }
                     }
                 }

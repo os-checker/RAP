@@ -133,12 +133,12 @@ pub fn span_to_filename(span: Span) -> String {
 */
 pub fn span_to_filename(span: Span) -> String {
     let filename = get_source_map().unwrap().span_to_filename(span);
-    if let FileName::Real(realname) = filename {
-        if let Some(ref path) = realname.local_path() {
-            return path.to_string_lossy().into();
-        }
+    if let FileName::Real(realname) = filename
+        && let Some(path) = realname.local_path()
+    {
+        return path.to_string_lossy().into();
     }
-    return "<unknown>".to_string();
+    "<unknown>".to_string()
 }
 
 #[inline]
@@ -153,10 +153,11 @@ pub fn get_variable_name<'tcx>(
     let target_local = rustc_middle::mir::Local::from_usize(local_index);
 
     for info in &body.var_debug_info {
-        if let rustc_middle::mir::VarDebugInfoContents::Place(place) = info.value {
-            if place.local == target_local && place.projection.is_empty() {
-                return Some(info.name.to_string());
-            }
+        if let rustc_middle::mir::VarDebugInfoContents::Place(place) = info.value
+            && place.local == target_local
+            && place.projection.is_empty()
+        {
+            return Some(info.name.to_string());
         }
     }
 

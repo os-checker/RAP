@@ -108,7 +108,7 @@ impl<'tcx> InterResultNode<'tcx> {
         Self {
             point_to: point_node,
             fields,
-            ty: var_node.ty.clone(),
+            ty: var_node.ty,
             states: var_node.ots.clone(),
             const_value: var_node.const_value,
         }
@@ -292,17 +292,11 @@ impl<'tcx> DominatedGraph<'tcx> {
         if inter_result.point_to.is_some() {
             let new_node = inter_result.point_to.unwrap();
             node.points_to = Some(new_id);
-            self.insert_node(
-                new_id,
-                new_node.ty.clone(),
-                local,
-                None,
-                new_node.states.clone(),
-            );
+            self.insert_node(new_id, new_node.ty, local, None, new_node.states.clone());
             self.dfs_insert_inter_results(*new_node, new_id);
         }
         for (field_idx, field_inter) in inter_result.fields {
-            let field_node_id = self.insert_field_node(local, field_idx, field_inter.ty.clone());
+            let field_node_id = self.insert_field_node(local, field_idx, field_inter.ty);
             self.dfs_insert_inter_results(field_inter, field_node_id);
         }
     }
@@ -324,7 +318,7 @@ impl<'tcx> DominatedGraph<'tcx> {
             self.def_id,
         );
         for (base, fields, contract) in cis_results {
-            if fields.len() == 0 {
+            if fields.is_empty() {
                 self.insert_cis_for_arg(base, contract);
             } else {
                 let mut cur_base = base;
@@ -408,10 +402,10 @@ impl<'tcx> DominatedGraph<'tcx> {
         let body = self.tcx.optimized_mir(self.def_id);
         let locals = body.local_decls.clone();
         if arg < locals.len() {
-            return Some(locals[Local::from(arg)].ty);
+            Some(locals[Local::from(arg)].ty)
         } else {
             // If the arg is a field of some place, we search the whole map for it.
-            return self.get_var_node(arg).unwrap().ty;
+            self.get_var_node(arg).unwrap().ty
         }
     }
 
@@ -447,7 +441,7 @@ impl<'tcx> DominatedGraph<'tcx> {
 impl<'tcx> DominatedGraph<'tcx> {
     // Only for inserting field obj node or pointed obj node.
     pub fn generate_node_id(&self) -> usize {
-        if self.variables.len() == 0 || *self.variables.keys().max().unwrap() < self.local_len {
+        if self.variables.is_empty() || *self.variables.keys().max().unwrap() < self.local_len {
             return self.local_len;
         }
         *self.variables.keys().max().unwrap() + 1
@@ -479,7 +473,7 @@ impl<'tcx> DominatedGraph<'tcx> {
             .insert(new_id, VariableNode::new_default(new_id, ty));
         let mut_node = self.get_var_node_mut(local).unwrap();
         mut_node.field.insert(field_idx, new_id);
-        return new_id;
+        new_id
     }
 
     /// Find the variable ID in DG corresponding to a sequence of fields.
@@ -521,7 +515,7 @@ impl<'tcx> DominatedGraph<'tcx> {
                 }
             }
         }
-        return cur;
+        cur
     }
 
     /// Establishes a points-to relationship: lv -> rv.
@@ -568,10 +562,10 @@ impl<'tcx> DominatedGraph<'tcx> {
         // 3. Clean up: Remove lv from old_points_to's pointed_by set
         if let Some(to) = old_points_to {
             // Only remove if we are changing pointing target (and not pointing to the same thing)
-            if to != rv {
-                if let Some(ori_to_node) = self.get_var_node_mut(to) {
-                    ori_to_node.pointed_by.remove(&lv);
-                }
+            if to != rv
+                && let Some(ori_to_node) = self.get_var_node_mut(to)
+            {
+                ori_to_node.pointed_by.remove(&lv);
             }
         }
     }
@@ -588,7 +582,7 @@ impl<'tcx> DominatedGraph<'tcx> {
 
     /// Get a variable node by its local ID.
     pub fn get_var_node(&self, local_id: usize) -> Option<&VariableNode<'tcx>> {
-        for (_idx, var_node) in &self.variables {
+        for var_node in self.variables.values() {
             if var_node.alias_set.contains(&local_id) {
                 return Some(var_node);
             }
@@ -601,7 +595,7 @@ impl<'tcx> DominatedGraph<'tcx> {
     /// Get a mutable reference to a variable node by its local ID.
     pub fn get_var_node_mut(&mut self, local_id: usize) -> Option<&mut VariableNode<'tcx>> {
         let va = self.variables.clone();
-        for (_idx, var_node) in &mut self.variables {
+        for var_node in self.variables.values_mut() {
             if var_node.alias_set.contains(&local_id) {
                 return Some(var_node);
             }
@@ -696,7 +690,7 @@ impl<'tcx> DominatedGraph<'tcx> {
     /// Set the drop flag for a node.
     pub fn set_drop(&mut self, idx: usize) -> bool {
         if let Some(ori_node) = self.get_var_node_mut(idx) {
-            if ori_node.is_dropped == true {
+            if ori_node.is_dropped {
                 // rap_warn!("Double free detected!"); // todo: update reports
                 return false;
             }
@@ -817,7 +811,7 @@ impl<'tcx> DominatedGraph<'tcx> {
         }
 
         // draw edges
-        writeln!(dot, "").unwrap();
+        writeln!(dot).unwrap();
         for id in &connected_nodes {
             if let Some(node) = self.variables.get(id) {
                 if let Some(target) = node.points_to {

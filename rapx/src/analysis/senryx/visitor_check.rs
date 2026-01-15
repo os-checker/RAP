@@ -125,35 +125,35 @@ impl<'tcx> BodyVisitor<'tcx> {
     /// 2. AddressOf (Stack allocation) -> `&raw x`
     /// 3. Known aligned API calls -> `as_ptr`, `as_mut_ptr`, `alloc`
     fn is_base_determined(&self, base_local: usize) -> bool {
-        if let Some(domain) = self.value_domains.get(&base_local) {
-            if let Some(def) = &domain.def {
-                match def {
-                    SymbolicDef::Ref(_) => return true, // &T is aligned
-                    SymbolicDef::Use(src) => return self.is_base_determined(*src), // Trace back
-                    SymbolicDef::Cast(src, _) => return self.is_base_determined(*src), // Trace back
-                    SymbolicDef::Call(func_name, _) => {
-                        // Whitelist aligned allocation/access APIs
-                        if func_name.contains("as_ptr")
-                            || func_name.contains("as_mut_ptr")
-                            || func_name.contains("alloc")
-                        {
-                            return true;
-                        }
+        if let Some(domain) = self.value_domains.get(&base_local)
+            && let Some(def) = &domain.def
+        {
+            match def {
+                SymbolicDef::Ref(_) => return true, // &T is aligned
+                SymbolicDef::Use(src) => return self.is_base_determined(*src), // Trace back
+                SymbolicDef::Cast(src, _) => return self.is_base_determined(*src), // Trace back
+                SymbolicDef::Call(func_name, _) => {
+                    // Whitelist aligned allocation/access APIs
+                    if func_name.contains("as_ptr")
+                        || func_name.contains("as_mut_ptr")
+                        || func_name.contains("alloc")
+                    {
+                        return true;
                     }
-                    _ => {}
                 }
+                _ => {}
             }
         }
         // Check VariableNode properties if SymbolicDef didn't give strict answer
         let points_to = self.chains.get_point_to_id(base_local);
 
         // If it points to a known Allocated object (not Unknown/Param), it's likely determined locally
-        if points_to != base_local {
-            if let Some(target_node) = self.chains.get_var_node(points_to) {
-                // Check if target is a local stack variable (id < local_len)
-                if self.chains.is_local(target_node.id) {
-                    return true;
-                }
+        if points_to != base_local
+            && let Some(target_node) = self.chains.get_var_node(points_to)
+        {
+            // Check if target is a local stack variable (id < local_len)
+            if self.chains.is_local(target_node.id) {
+                return true;
             }
         }
 
@@ -355,10 +355,10 @@ impl<'tcx> BodyVisitor<'tcx> {
             .iter_mut()
             .find(|result| result.func_name == func_name && result.func_span == fn_span)
         {
-            if let Some(failed_set) = existing.failed_contracts.get_mut(&idx) {
-                if failed_set.contains(sp) {
-                    return;
-                }
+            if let Some(failed_set) = existing.failed_contracts.get_mut(&idx)
+                && failed_set.contains(sp)
+            {
+                return;
             }
 
             existing
@@ -460,10 +460,10 @@ impl<'tcx> BodyVisitor<'tcx> {
         let mut req_aligns = req_layout.possible_aligns();
 
         // handle generic types: if target is generic and has no alignment constraints, check all common alignments (1~64)
-        if let PlaceTy::GenericTy(..) = req_layout {
-            if req_aligns.is_empty() {
-                req_aligns.extend([1, 2, 4, 8, 16, 32, 64]);
-            }
+        if let PlaceTy::GenericTy(..) = req_layout
+            && req_aligns.is_empty()
+        {
+            req_aligns.extend([1, 2, 4, 8, 16, 32, 64]);
         }
 
         // opt: if only alignment 1 is required, it's always safe
@@ -490,10 +490,10 @@ impl<'tcx> BodyVisitor<'tcx> {
         let mut base_aligns = base_layout.possible_aligns();
 
         // handle generic types: Base is also generic, extend its possible alignments
-        if let PlaceTy::GenericTy(..) = base_layout {
-            if base_aligns.is_empty() {
-                base_aligns.extend([1, 2, 4, 8, 16, 32, 64]);
-            }
+        if let PlaceTy::GenericTy(..) = base_layout
+            && base_aligns.is_empty()
+        {
+            base_aligns.extend([1, 2, 4, 8, 16, 32, 64]);
         }
 
         rap_debug!(
@@ -608,15 +608,11 @@ impl<'tcx> BodyVisitor<'tcx> {
 
     // If the arg has offset from its pointed object, this function will return:
     fn get_ptr_offset_info(&self, arg: usize) -> Option<(BinOp, usize, AnaOperand, PlaceTy<'tcx>)> {
-        if let Some(domain) = self.chains.get_var_node(arg) {
-            if let Some(def) = &domain.offset_from {
-                match def {
-                    SymbolicDef::PtrOffset(op, base, off, place_ty) => {
-                        return Some((*op, *base, off.clone(), place_ty.clone()));
-                    }
-                    _ => {}
-                }
-            }
+        if let Some(domain) = self.chains.get_var_node(arg)
+            && let Some(def) = &domain.offset_from
+            && let SymbolicDef::PtrOffset(op, base, off, place_ty) = def
+        {
+            return Some((*op, *base, off.clone(), place_ty.clone()));
         }
         None
     }
@@ -628,27 +624,27 @@ impl<'tcx> BodyVisitor<'tcx> {
         // Get type info
         let ptr_ty_opt = self.chains.get_var_node(ptr_local).and_then(|n| n.ty);
 
-        if let Some(ptr_ty) = ptr_ty_opt {
-            if is_ptr(ptr_ty) || is_ref(ptr_ty) {
-                let pointee_ty = get_pointee(ptr_ty);
+        if let Some(ptr_ty) = ptr_ty_opt
+            && (is_ptr(ptr_ty) || is_ref(ptr_ty))
+        {
+            let pointee_ty = get_pointee(ptr_ty);
 
-                if let Some(ptr_node) = self.chains.get_var_node_mut(ptr_local) {
-                    if is_aligned {
-                        ptr_node.ots.align = AlignState::Aligned(pointee_ty);
-                        rap_debug!(
-                            "Refine State: _{} (source) marked as Aligned({:?}) via condition (True).",
-                            ptr_local,
-                            pointee_ty
-                        );
-                    } else {
-                        ptr_node.ots.align = AlignState::Unaligned(pointee_ty);
+            if let Some(ptr_node) = self.chains.get_var_node_mut(ptr_local) {
+                if is_aligned {
+                    ptr_node.ots.align = AlignState::Aligned(pointee_ty);
+                    rap_debug!(
+                        "Refine State: _{} (source) marked as Aligned({:?}) via condition (True).",
+                        ptr_local,
+                        pointee_ty
+                    );
+                } else {
+                    ptr_node.ots.align = AlignState::Unaligned(pointee_ty);
 
-                        rap_debug!(
-                            "Refine State: _{} (source) marked as Unaligned({:?}) via condition (False).",
-                            ptr_local,
-                            pointee_ty
-                        );
-                    }
+                    rap_debug!(
+                        "Refine State: _{} (source) marked as Unaligned({:?}) via condition (False).",
+                        ptr_local,
+                        pointee_ty
+                    );
                 }
             }
         }
@@ -693,13 +689,13 @@ impl<'tcx> BodyVisitor<'tcx> {
     fn two_types_cast_check(src: PlaceTy<'tcx>, dest: PlaceTy<'tcx>) -> bool {
         let src_aligns = src.possible_aligns();
         let dest_aligns = dest.possible_aligns();
-        if dest_aligns.len() == 0 && src != dest {
+        if dest_aligns.is_empty() && src != dest {
             // dst ty could be arbitrary type && src and dst are different types
             return false;
         }
 
         for &d_align in &dest_aligns {
-            if d_align != 1 && src_aligns.len() == 0 {
+            if d_align != 1 && src_aligns.is_empty() {
                 // src ty could be arbitrary type
                 return false;
             }

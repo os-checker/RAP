@@ -191,28 +191,25 @@ where
 
     // Apply path constraints (e.g., branch conditions)
     for constraint in path_constraints {
-        match constraint {
-            SymbolicDef::Binary(op, lhs_idx, rhs_op) => {
-                if let (Some(lhs), Some(rhs)) = (
-                    z3_vars.get(&lhs_idx),
-                    get_operand_bv(&ctx, &rhs_op, &z3_vars),
-                ) {
-                    let op_str = binop_to_str(&op);
-                    let rhs_str = operand_to_str(&rhs_op);
-                    rap_debug!("  [Path] _{} {} {}", lhs_idx, op_str, rhs_str);
+        if let SymbolicDef::Binary(op, lhs_idx, rhs_op) = constraint
+            && let (Some(lhs), Some(rhs)) = (
+                z3_vars.get(&lhs_idx),
+                get_operand_bv(&ctx, &rhs_op, &z3_vars),
+            )
+        {
+            let op_str = binop_to_str(&op);
+            let rhs_str = operand_to_str(&rhs_op);
+            rap_debug!("  [Path] _{} {} {}", lhs_idx, op_str, rhs_str);
 
-                    match op {
-                        BinOp::Eq => solver.assert(&lhs._eq(&rhs)),
-                        BinOp::Ne => solver.assert(&lhs._eq(&rhs).not()),
-                        BinOp::Lt => solver.assert(&lhs.bvult(&rhs)),
-                        BinOp::Le => solver.assert(&lhs.bvule(&rhs)),
-                        BinOp::Gt => solver.assert(&rhs.bvult(&lhs)),
-                        BinOp::Ge => solver.assert(&rhs.bvule(&lhs)),
-                        _ => {}
-                    }
-                }
+            match op {
+                BinOp::Eq => solver.assert(&lhs._eq(&rhs)),
+                BinOp::Ne => solver.assert(&lhs._eq(&rhs).not()),
+                BinOp::Lt => solver.assert(&lhs.bvult(&rhs)),
+                BinOp::Le => solver.assert(&lhs.bvule(&rhs)),
+                BinOp::Gt => solver.assert(&rhs.bvult(lhs)),
+                BinOp::Ge => solver.assert(&rhs.bvule(lhs)),
+                _ => {}
             }
-            _ => {}
         }
     }
 

@@ -90,11 +90,11 @@ fn value_is_from_const(graph: &Graph, value_idx: Local) -> bool {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Const(_, src_ty) = op {
-                if src_ty.contains("u8") {
-                    const_found = true;
-                    return DFSStatus::Stop;
-                }
+            if let NodeOp::Const(_, src_ty) = op
+                && src_ty.contains("u8")
+            {
+                const_found = true;
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue

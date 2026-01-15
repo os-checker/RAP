@@ -21,41 +21,41 @@ pub fn get_fn_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<String> {
 
 pub fn get_fn_name_byid(def_id: &DefId) -> String {
     let s = format!("{:?}", *def_id);
-    if let Some(start) = s.find("DefId") {
-        if let Some(end) = s.find("]::") {
-            let s1 = s.replace(&s[start..end + 3], "").to_string();
-            if let Some(start) = s1.find(")") {
-                let result = s1.replace(&s1[start..start + 1], "").to_string();
-                return result;
-            }
-            return s1;
+    if let Some(start) = s.find("DefId")
+        && let Some(end) = s.find("]::")
+    {
+        let s1 = s.replace(&s[start..end + 3], "").to_string();
+        if let Some(start) = s1.find(")") {
+            let result = s1.replace(&s1[start..start + 1], "").to_string();
+            return result;
         }
+        return s1;
     }
     s.clone()
 }
 pub fn get_name(tcx: TyCtxt<'_>, def_id: DefId) -> Option<Symbol> {
-    if def_id.is_local() {
-        if let Some(node) = tcx.hir_get_if_local(def_id) {
-            match node {
-                Item(item) => {
-                    let ident = tcx.hir_ident(item.hir_id());
-                    return Some(ident.name);
-                }
-                ImplItem(item) => {
-                    let ident = tcx.hir_ident(item.hir_id());
-                    return Some(ident.name);
-                }
-                ForeignItem(item) => {
-                    let ident = tcx.hir_ident(item.hir_id());
-                    return Some(ident.name);
-                }
-                TraitItem(item) => {
-                    let ident = tcx.hir_ident(item.hir_id());
-                    return Some(ident.name);
-                }
-                _ => {
-                    return None;
-                }
+    if def_id.is_local()
+        && let Some(node) = tcx.hir_get_if_local(def_id)
+    {
+        match node {
+            Item(item) => {
+                let ident = tcx.hir_ident(item.hir_id());
+                return Some(ident.name);
+            }
+            ImplItem(item) => {
+                let ident = tcx.hir_ident(item.hir_id());
+                return Some(ident.name);
+            }
+            ForeignItem(item) => {
+                let ident = tcx.hir_ident(item.hir_id());
+                return Some(ident.name);
+            }
+            TraitItem(item) => {
+                let ident = tcx.hir_ident(item.hir_id());
+                return Some(ident.name);
+            }
+            _ => {
+                return None;
             }
         }
     }
@@ -89,12 +89,12 @@ fn convert_filename(filename: FileName) -> String {
 */
 
 fn convert_filename(filename: FileName) -> String {
-    if let FileName::Real(realname) = filename {
-        if let Some(ref path) = realname.local_path() {
-            return path.to_string_lossy().into();
-        }
+    if let FileName::Real(realname) = filename
+        && let Some(path) = realname.local_path()
+    {
+        return path.to_string_lossy().into();
     }
-    return "<unknown>".to_string();
+    "<unknown>".to_string()
 }
 
 pub fn get_module_name(tcx: TyCtxt, def_id: DefId) -> String {
@@ -128,17 +128,17 @@ pub fn get_adt_name(tcx: TyCtxt<'_>, def_id: DefId) -> String {
         }
         _ => {}
     }
-    if let Some(assoc_item) = tcx.opt_associated_item(def_id) {
-        if let Some(impl_id) = assoc_item.impl_container(tcx) {
-            let ty = tcx.type_of(impl_id).skip_binder();
-            let raw_name = ty.to_string();
-            return raw_name
-                .split('<')
-                .next()
-                .unwrap_or(&raw_name)
-                .trim()
-                .to_string();
-        }
+    if let Some(assoc_item) = tcx.opt_associated_item(def_id)
+        && let Some(impl_id) = assoc_item.impl_container(tcx)
+    {
+        let ty = tcx.type_of(impl_id).skip_binder();
+        let raw_name = ty.to_string();
+        return raw_name
+            .split('<')
+            .next()
+            .unwrap_or(&raw_name)
+            .trim()
+            .to_string();
     }
     "Free_Functions".to_string()
 }

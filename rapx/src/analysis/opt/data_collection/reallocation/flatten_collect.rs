@@ -38,12 +38,11 @@ pub struct FlattenCollectCheck {
 fn is_flatten_node(node: &GraphNode) -> bool {
     let def_paths = &DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.flat_map.last_def_id()
-                || *def_id == def_paths.flatten.last_def_id()
-            {
-                return true;
-            }
+        if let NodeOp::Call(def_id) = op
+            && (*def_id == def_paths.flat_map.last_def_id()
+                || *def_id == def_paths.flatten.last_def_id())
+        {
+            return true;
         }
     }
     false
@@ -52,10 +51,10 @@ fn is_flatten_node(node: &GraphNode) -> bool {
 fn is_collect_node(node: &GraphNode) -> bool {
     let def_paths = &DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.collect.last_def_id() {
-                return true;
-            }
+        if let NodeOp::Call(def_id) = op
+            && *def_id == def_paths.collect.last_def_id()
+        {
+            return true;
         }
     }
     false

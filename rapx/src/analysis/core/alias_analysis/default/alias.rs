@@ -1,15 +1,10 @@
-use super::{
-    MopAliasPair, MopFnAliasMap, block::Term, graph::*, types::*, value::*,
-};
-use crate::{
-    def_id::*,
-    analysis::graphs::scc::Scc,
-};
+use super::{MopAliasPair, MopFnAliasMap, block::Term, graph::*, types::*, value::*};
+use crate::{analysis::graphs::scc::Scc, def_id::*};
 use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::def_id::DefId;
 use rustc_middle::{
     mir::{Local, Operand, Place, ProjectionElem, TerminatorKind},
-    ty::self,
+    ty,
 };
 use std::collections::HashSet;
 
@@ -38,8 +33,8 @@ impl<'tcx> MopGraph<'tcx> {
         recursion_set: &mut HashSet<DefId>,
     ) {
         let cur_block = self.blocks[bb_index].clone();
-        if let Term::Call(call) | Term::Drop(call) = cur_block.terminator {
-            if let TerminatorKind::Call {
+        if let Term::Call(call) | Term::Drop(call) = cur_block.terminator
+            && let TerminatorKind::Call {
                 func: Operand::Constant(ref constant),
                 ref args,
                 ref destination,
@@ -48,81 +43,80 @@ impl<'tcx> MopGraph<'tcx> {
                 call_source: _,
                 fn_span: _,
             } = call.kind
-            {
-                let lv = self.projection(*destination);
-                let mut may_drop = false;
-                if self.values[lv].may_drop {
-                    may_drop = true;
-                }
+        {
+            let lv = self.projection(*destination);
+            let mut may_drop = false;
+            if self.values[lv].may_drop {
+                may_drop = true;
+            }
 
-                let mut merge_vec = Vec::new();
-                merge_vec.push(lv);
+            let mut merge_vec = Vec::new();
+            merge_vec.push(lv);
 
-                for arg in args {
-                    match arg.node {
-                        Operand::Copy(ref p) | Operand::Move(ref p) => {
-                            let rv = self.projection(*p);
-                            merge_vec.push(rv);
-                            if self.values[rv].may_drop {
-                                may_drop = true;
-                            }
+            for arg in args {
+                match arg.node {
+                    Operand::Copy(ref p) | Operand::Move(ref p) => {
+                        let rv = self.projection(*p);
+                        merge_vec.push(rv);
+                        if self.values[rv].may_drop {
+                            may_drop = true;
                         }
-                        //
-                        Operand::Constant(_) => {
-                            merge_vec.push(0);
-                        }
+                    }
+                    //
+                    Operand::Constant(_) => {
+                        merge_vec.push(0);
                     }
                 }
-                if let &ty::FnDef(target_id, _) = constant.const_.ty().kind() {
-                    if may_drop == false {
+            }
+            if let &ty::FnDef(target_id, _) = constant.const_.ty().kind() {
+                if !may_drop {
+                    return;
+                }
+                // This function does not introduce new aliases.
+                if is_no_alias_intrinsic(target_id) {
+                    return;
+                }
+                if !self.tcx.is_mir_available(target_id) {
+                    return;
+                }
+                rap_debug!("Sync aliases for function call: {:?}", target_id);
+                let fn_aliases = if fn_map.contains_key(&target_id) {
+                    rap_debug!("Aliases existed");
+                    fn_map.get(&target_id).unwrap()
+                } else {
+                    /* Fixed-point iteration: this is not perfect */
+                    if recursion_set.contains(&target_id) {
                         return;
                     }
-                    // This function does not introduce new aliases.
-                    if is_no_alias_intrinsic(target_id) {
-                        return;
+                    recursion_set.insert(target_id);
+                    let mut mop_graph = MopGraph::new(self.tcx, target_id);
+                    mop_graph.find_scc();
+                    mop_graph.check(0, fn_map, recursion_set);
+                    let ret_alias = mop_graph.ret_alias.clone();
+                    rap_info!("Find aliases of {:?}: {:?}", target_id, ret_alias);
+                    fn_map.insert(target_id, ret_alias);
+                    recursion_set.remove(&target_id);
+                    fn_map.get(&target_id).unwrap()
+                };
+                if fn_aliases.aliases().is_empty()
+                    && let Some(l_set_idx) = self.find_alias_set(lv)
+                {
+                    self.alias_sets[l_set_idx].remove(&lv);
+                }
+                for alias in fn_aliases.aliases().iter() {
+                    if !alias.valuable() {
+                        continue;
                     }
-                    if !self.tcx.is_mir_available(target_id) {
-                        return;
-                    }
-                    rap_debug!("Sync aliases for function call: {:?}", target_id);
-                    let fn_aliases = if fn_map.contains_key(&target_id) {
-                        rap_debug!("Aliases existed");
-                        fn_map.get(&target_id).unwrap()
-                    } else {
-                        /* Fixed-point iteration: this is not perfect */
-                        if recursion_set.contains(&target_id) {
-                            return;
-                        }
-                        recursion_set.insert(target_id);
-                        let mut mop_graph = MopGraph::new(self.tcx, target_id);
-                        mop_graph.find_scc();
-                        mop_graph.check(0, fn_map, recursion_set);
-                        let ret_alias = mop_graph.ret_alias.clone();
-                        rap_info!("Find aliases of {:?}: {:?}", target_id, ret_alias);
-                        fn_map.insert(target_id, ret_alias);
-                        recursion_set.remove(&target_id);
-                        fn_map.get(&target_id).unwrap()
-                    };
-                    if fn_aliases.aliases().is_empty() {
-                        if let Some(l_set_idx) = self.find_alias_set(lv) {
-                            self.alias_sets[l_set_idx].remove(&lv);
-                        }
-                    }
-                    for alias in fn_aliases.aliases().iter() {
-                        if !alias.valuable() {
-                            continue;
-                        }
-                        self.handle_fn_alias(alias, &merge_vec);
-                        rap_debug!("{:?}", self.alias_sets);
-                    }
-                } else if self.values[lv].may_drop {
-                    for rv in &merge_vec {
-                        if self.values[*rv].may_drop && lv != *rv && self.values[lv].is_ptr() {
-                            // We assume they are alias;
-                            // It is a function call and we should not distinguish left or right;
-                            // Merge the alias instead of assign.
-                            self.merge_alias(lv, *rv);
-                        }
+                    self.handle_fn_alias(alias, &merge_vec);
+                    rap_debug!("{:?}", self.alias_sets);
+                }
+            } else if self.values[lv].may_drop {
+                for rv in &merge_vec {
+                    if self.values[*rv].may_drop && lv != *rv && self.values[lv].is_ptr() {
+                        // We assume they are alias;
+                        // It is a function call and we should not distinguish left or right;
+                        // Merge the alias instead of assign.
+                        self.merge_alias(lv, *rv);
                     }
                 }
             }
@@ -192,10 +186,10 @@ impl<'tcx> MopGraph<'tcx> {
         let new_l_set_idx = r_set_idx;
         self.alias_sets[new_l_set_idx].insert(lv_idx);
 
-        if self.values[lv_idx].fields.len() > 0 || self.values[rv_idx].fields.len() > 0 {
+        if !self.values[lv_idx].fields.is_empty() || !self.values[rv_idx].fields.is_empty() {
             self.sync_field_alias(lv_idx, rv_idx, 0, true);
         }
-        if self.values[rv_idx].father != None {
+        if self.values[rv_idx].father.is_some() {
             self.sync_father_alias(lv_idx, rv_idx, new_l_set_idx);
         }
     }
@@ -389,17 +383,18 @@ impl<'tcx> MopGraph<'tcx> {
                 let mut replace = None;
                 if self.values[idx].local > self.arg_size {
                     for (i, fidx) in f_node.iter().enumerate() {
-                        if let Some(father_info) = fidx {
-                            if i != idx && i != node.index {
-                                // && father_info.father_value_id == f_node[idx] {
-                                for (j, v) in self.values.iter().enumerate() {
-                                    if j != idx
-                                        && j != node.index
-                                        && self.is_aliasing(j, father_info.father_value_id)
-                                        && v.local <= self.arg_size
-                                    {
-                                        replace = Some(&self.values[j]);
-                                    }
+                        if let Some(father_info) = fidx
+                            && i != idx
+                            && i != node.index
+                        {
+                            // && father_info.father_value_id == f_node[idx] {
+                            for (j, v) in self.values.iter().enumerate() {
+                                if j != idx
+                                    && j != node.index
+                                    && self.is_aliasing(j, father_info.father_value_id)
+                                    && v.local <= self.arg_size
+                                {
+                                    replace = Some(&self.values[j]);
                                 }
                             }
                         }
@@ -503,16 +498,15 @@ impl<'tcx> MopGraph<'tcx> {
                 let a = &aliases[i].fact;
                 let b = &aliases[j].fact;
                 // Only merge if both lhs/rhs locals are equal and BOTH are strict prefixes
-                if a.left_local() == b.left_local() && a.right_local() == b.right_local() {
-                    if a.lhs_fields.len() <= b.lhs_fields.len()
+                if a.left_local() == b.left_local() && a.right_local() == b.right_local()
+                    && a.lhs_fields.len() <= b.lhs_fields.len()
                     && a.lhs_fields == b.lhs_fields[..a.lhs_fields.len()]
                     && a.rhs_fields.len() <= b.rhs_fields.len()
                     && a.rhs_fields == b.rhs_fields[..a.rhs_fields.len()]
                     // Exclude case where fields are exactly the same (avoid self-removal)
                     && (a.lhs_fields.len() < b.lhs_fields.len() || a.rhs_fields.len() < b.rhs_fields.len())
-                    {
-                        to_remove.insert(aliases[j].clone());
-                    }
+                {
+                    to_remove.insert(aliases[j].clone());
                 }
             }
         }
@@ -564,16 +558,16 @@ impl<'tcx> MopGraph<'tcx> {
         let idx1 = if idx2 < idx1 { idx1 - 1 } else { idx1 };
         self.alias_sets[idx1].extend(set2);
 
-        if self.values[e1].fields.len() > 0 {
+        if !self.values[e1].fields.is_empty() {
             self.sync_field_alias(e2, e1, 0, false);
         }
-        if self.values[e2].fields.len() > 0 {
+        if !self.values[e2].fields.is_empty() {
             self.sync_field_alias(e1, e2, 0, false);
         }
-        if self.values[e1].father != None {
+        if self.values[e1].father.is_some() {
             self.sync_father_alias(e2, e1, idx1);
         }
-        if self.values[e2].father != None {
+        if self.values[e2].father.is_some() {
             self.sync_father_alias(e1, e2, idx1);
         }
     }
@@ -592,5 +586,5 @@ pub fn is_no_alias_intrinsic(def_id: DefId) -> bool {
     if def_id == call_mut() || def_id == clone() || def_id == take() {
         return true;
     }
-    return false;
+    false
 }

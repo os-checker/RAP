@@ -42,13 +42,12 @@ pub struct VecEncodingCheck {
 fn extract_vec_if_is_string_from(graph: &Graph, node: &GraphNode) -> Option<Local> {
     let def_paths = &DEFPATHS.get().unwrap();
     for op in node.ops.iter() {
-        if let NodeOp::Call(def_id) = op {
-            if *def_id == def_paths.string_from_utf8.last_def_id()
-                || *def_id == def_paths.string_from_utf8_lossy.last_def_id()
-            {
-                let in_edge = &graph.edges[node.in_edges[0]];
-                return Some(in_edge.src);
-            }
+        if let NodeOp::Call(def_id) = op
+            && (*def_id == def_paths.string_from_utf8.last_def_id()
+                || *def_id == def_paths.string_from_utf8_lossy.last_def_id())
+        {
+            let in_edge = &graph.edges[node.in_edges[0]];
+            return Some(in_edge.src);
         }
     }
     None
@@ -61,13 +60,12 @@ fn find_upside_vec_new_node(graph: &Graph, node_idx: Local) -> Option<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.vec_new.last_def_id()
-                    || *def_id == def_paths.vec_with_capacity.last_def_id()
-                {
-                    vec_new_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.vec_new.last_def_id()
+                    || *def_id == def_paths.vec_with_capacity.last_def_id())
+            {
+                vec_new_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -93,11 +91,11 @@ fn find_downside_push_node(graph: &Graph, node_idx: Local) -> Vec<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.vec_push.last_def_id() {
-                    push_node_idxs.push(idx);
-                    break;
-                }
+            if let NodeOp::Call(def_id) = op
+                && *def_id == def_paths.vec_push.last_def_id()
+            {
+                push_node_idxs.push(idx);
+                break;
             }
         }
         DFSStatus::Continue
@@ -122,19 +120,19 @@ impl OptCheck for VecEncodingCheck {
     fn check(&mut self, graph: &Graph, tcx: &TyCtxt) {
         let _ = &DEFPATHS.get_or_init(|| DefPaths::new(tcx));
         for node in graph.nodes.iter() {
-            if let Some(vec_node_idx) = extract_vec_if_is_string_from(graph, node) {
-                if let Some(vec_new_idx) = find_upside_vec_new_node(graph, vec_node_idx) {
-                    let vec_push_indice = find_downside_push_node(graph, vec_new_idx);
-                    for vec_push_idx in vec_push_indice {
-                        let pushed_value_edge = &graph.edges[graph.nodes[vec_push_idx].in_edges[1]]; // The second parameter
-                        let pushed_value_idx = pushed_value_edge.src;
-                        if !value_is_from_const(graph, pushed_value_idx) {
-                            self.record.clear();
-                            return;
-                        }
+            if let Some(vec_node_idx) = extract_vec_if_is_string_from(graph, node)
+                && let Some(vec_new_idx) = find_upside_vec_new_node(graph, vec_node_idx)
+            {
+                let vec_push_indice = find_downside_push_node(graph, vec_new_idx);
+                for vec_push_idx in vec_push_indice {
+                    let pushed_value_edge = &graph.edges[graph.nodes[vec_push_idx].in_edges[1]]; // The second parameter
+                    let pushed_value_idx = pushed_value_edge.src;
+                    if !value_is_from_const(graph, pushed_value_idx) {
+                        self.record.clear();
+                        return;
                     }
-                    self.record.push(node.span);
                 }
+                self.record.push(node.span);
             }
         }
     }

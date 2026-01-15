@@ -55,7 +55,7 @@ impl<'tcx> intravisit::Visitor<'tcx> for PushFinder<'tcx> {
                 .typeck_results
                 .type_dependent_def_id(ex.hir_id)
                 .unwrap();
-            let target_def_id = (&DEFPATHS.get().unwrap()).vec_push.last_def_id();
+            let target_def_id = DEFPATHS.get().unwrap().vec_push.last_def_id();
             if def_id == target_def_id {
                 self.record.push(span);
             }
@@ -118,13 +118,12 @@ fn find_upside_reservation(graph: &Graph, node_idx: Local) -> Option<Local> {
     let mut node_operator = |graph: &Graph, idx: Local| -> DFSStatus {
         let node = &graph.nodes[idx];
         for op in node.ops.iter() {
-            if let NodeOp::Call(def_id) = op {
-                if *def_id == def_paths.vec_with_capacity.last_def_id()
-                    || *def_id == def_paths.vec_reserve.last_def_id()
-                {
-                    reservation_node_idx = Some(idx);
-                    return DFSStatus::Stop;
-                }
+            if let NodeOp::Call(def_id) = op
+                && (*def_id == def_paths.vec_with_capacity.last_def_id()
+                    || *def_id == def_paths.vec_reserve.last_def_id())
+            {
+                reservation_node_idx = Some(idx);
+                return DFSStatus::Stop;
             }
         }
         DFSStatus::Continue
@@ -154,10 +153,8 @@ impl OptCheck for UnreservedVecCheck {
                 if is_vec_new_node(node) {
                     self.record.push(node.span);
                 }
-                if is_vec_push_node(node) {
-                    if let None = find_upside_reservation(graph, node_idx) {
-                        self.record.push(node.span);
-                    }
+                if is_vec_push_node(node) && find_upside_reservation(graph, node_idx).is_none() {
+                    self.record.push(node.span);
                 }
             }
         }
@@ -172,10 +169,10 @@ impl OptCheck for UnreservedVecCheck {
         intravisit::walk_body(&mut loop_finder, body);
         for (_, push_record) in loop_finder.record {
             for push_span in push_record {
-                if let Some((node_idx, _)) = graph.query_node_by_span(push_span, false) {
-                    if let None = find_upside_reservation(graph, node_idx) {
-                        self.record.push(push_span);
-                    }
+                if let Some((node_idx, _)) = graph.query_node_by_span(push_span, false)
+                    && find_upside_reservation(graph, node_idx).is_none()
+                {
+                    self.record.push(push_span);
                 }
             }
         }

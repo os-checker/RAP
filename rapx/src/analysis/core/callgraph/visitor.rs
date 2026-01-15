@@ -19,20 +19,17 @@ impl<'b, 'tcx> CallGraphVisitor<'b, 'tcx> {
         call_graph_info: &'b mut CallGraph<'tcx>,
     ) -> Self {
         Self {
-            tcx: tcx,
-            def_id: def_id,
-            body: body,
-            call_graph_info: call_graph_info,
+            tcx,
+            def_id,
+            body,
+            call_graph_info,
         }
     }
 
     fn add_fn_call(&mut self, callee_def_id: DefId, terminator: &'tcx mir::Terminator<'tcx>) {
         self.call_graph_info.register_fn(callee_def_id);
-        self.call_graph_info.add_funciton_call(
-            self.def_id.clone(),
-            callee_def_id,
-            Some(terminator),
-        );
+        self.call_graph_info
+            .add_funciton_call(self.def_id, callee_def_id, Some(terminator));
     }
 
     fn handle_fn_call(
@@ -93,59 +90,58 @@ impl<'b, 'tcx> CallGraphVisitor<'b, 'tcx> {
 
     pub fn visit(&mut self) {
         self.call_graph_info.register_fn(self.def_id);
-        for (_, data) in self.body.basic_blocks.iter().enumerate() {
+        for data in self.body.basic_blocks.iter() {
             let terminator = data.terminator();
-            self.visit_terminator(&terminator);
+            self.visit_terminator(terminator);
         }
     }
 
     fn visit_terminator(&mut self, terminator: &'tcx mir::Terminator<'tcx>) {
-        if let mir::TerminatorKind::Call { func, .. } = &terminator.kind {
-            if let mir::Operand::Constant(constant) = func {
-                if let FnDef(callee_def_id, callee_substs) = constant.const_.ty().kind() {
-                    let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
-                    if let Ok(Some(instance)) =
-                        Instance::try_resolve(self.tcx, ty_env, *callee_def_id, callee_substs)
-                    {
-                        let mut is_virtual = false;
-                        // Try to analysis the specific type of callee.
-                        let instance_def_id = match instance.def {
-                            InstanceKind::Item(def_id) => Some(def_id),
-                            InstanceKind::Intrinsic(def_id) => Some(def_id),
-                            InstanceKind::VTableShim(def_id) => Some(def_id),
-                            InstanceKind::ReifyShim(def_id, _) => Some(def_id),
-                            InstanceKind::FnPtrShim(def_id, _) => Some(def_id),
-                            InstanceKind::Virtual(def_id, _) => {
-                                is_virtual = true;
-                                Some(def_id)
-                            }
-                            InstanceKind::ClosureOnceShim { call_once, .. } => Some(call_once),
-                            InstanceKind::ConstructCoroutineInClosureShim {
-                                coroutine_closure_def_id,
-                                ..
-                            } => Some(coroutine_closure_def_id),
-                            InstanceKind::ThreadLocalShim(def_id) => Some(def_id),
-                            InstanceKind::DropGlue(def_id, _) => Some(def_id),
-                            InstanceKind::FnPtrAddrShim(def_id, _) => Some(def_id),
-                            InstanceKind::AsyncDropGlueCtorShim(def_id, _) => Some(def_id),
-                            InstanceKind::CloneShim(def_id, _) => {
-                                if !self.tcx.is_closure_like(def_id) {
-                                    // Not a closure
-                                    Some(def_id)
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => todo!(),
-                        };
-                        if let Some(instance_def_id) = instance_def_id {
-                            self.handle_fn_call(instance_def_id, is_virtual, terminator);
-                        }
-                    } else {
-                        // Although failing to get specific type, callee is still useful.
-                        self.handle_fn_call(*callee_def_id, false, terminator);
+        if let mir::TerminatorKind::Call { func, .. } = &terminator.kind
+            && let mir::Operand::Constant(constant) = func
+            && let FnDef(callee_def_id, callee_substs) = constant.const_.ty().kind()
+        {
+            let ty_env = TypingEnv::post_analysis(self.tcx, self.def_id);
+            if let Ok(Some(instance)) =
+                Instance::try_resolve(self.tcx, ty_env, *callee_def_id, callee_substs)
+            {
+                let mut is_virtual = false;
+                // Try to analysis the specific type of callee.
+                let instance_def_id = match instance.def {
+                    InstanceKind::Item(def_id) => Some(def_id),
+                    InstanceKind::Intrinsic(def_id) => Some(def_id),
+                    InstanceKind::VTableShim(def_id) => Some(def_id),
+                    InstanceKind::ReifyShim(def_id, _) => Some(def_id),
+                    InstanceKind::FnPtrShim(def_id, _) => Some(def_id),
+                    InstanceKind::Virtual(def_id, _) => {
+                        is_virtual = true;
+                        Some(def_id)
                     }
+                    InstanceKind::ClosureOnceShim { call_once, .. } => Some(call_once),
+                    InstanceKind::ConstructCoroutineInClosureShim {
+                        coroutine_closure_def_id,
+                        ..
+                    } => Some(coroutine_closure_def_id),
+                    InstanceKind::ThreadLocalShim(def_id) => Some(def_id),
+                    InstanceKind::DropGlue(def_id, _) => Some(def_id),
+                    InstanceKind::FnPtrAddrShim(def_id, _) => Some(def_id),
+                    InstanceKind::AsyncDropGlueCtorShim(def_id, _) => Some(def_id),
+                    InstanceKind::CloneShim(def_id, _) => {
+                        if !self.tcx.is_closure_like(def_id) {
+                            // Not a closure
+                            Some(def_id)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => todo!(),
+                };
+                if let Some(instance_def_id) = instance_def_id {
+                    self.handle_fn_call(instance_def_id, is_virtual, terminator);
                 }
+            } else {
+                // Although failing to get specific type, callee is still useful.
+                self.handle_fn_call(*callee_def_id, false, terminator);
             }
         }
     }

@@ -5,7 +5,7 @@ use rustc_middle::{
 
 use super::{drop::*, graph::*};
 use crate::analysis::core::alias_analysis::default::{
-    MopAliasPair, MopFnAliasMap, alias::is_no_alias_intrinsic, block::Term, types::*, value::*
+    MopAliasPair, MopFnAliasMap, alias::is_no_alias_intrinsic, block::Term, types::*, value::*,
 };
 use rustc_data_structures::fx::FxHashSet;
 
@@ -35,8 +35,8 @@ impl<'tcx> SafeDropGraph<'tcx> {
     /* Check the aliases introduced by the terminators (function call) of a scc block */
     pub fn alias_bbcall(&mut self, bb_index: usize, fn_map: &MopFnAliasMap) {
         let cur_block = self.mop_graph.blocks[bb_index].clone();
-        if let Term::Call(call) | Term::Drop(call) = cur_block.terminator {
-            if let TerminatorKind::Call {
+        if let Term::Call(call) | Term::Drop(call) = cur_block.terminator
+            && let TerminatorKind::Call {
                 func: Operand::Constant(ref constant),
                 ref args,
                 ref destination,
@@ -45,65 +45,62 @@ impl<'tcx> SafeDropGraph<'tcx> {
                 call_source: _,
                 fn_span: _,
             } = call.kind
-            {
-                rap_debug!("alias_bbcall in {:?}: {:?}", bb_index, call);
-                let lv = self.projection(destination.clone());
-                let mut merge_vec = Vec::new();
-                merge_vec.push(lv);
-                let mut may_drop_flag = 0;
-                if self.mop_graph.values[lv].may_drop {
-                    may_drop_flag += 1;
-                }
-                for arg in args {
-                    match arg.node {
-                        Operand::Copy(ref p) | Operand::Move(ref p) => {
-                            let rv = self.projection(p.clone());
-                            self.uaf_check(rv, bb_index, call.source_info.span, true);
-                            merge_vec.push(rv);
-                            if self.mop_graph.values[rv].may_drop {
-                                may_drop_flag += 1;
-                            }
-                        }
-                        Operand::Constant(_) => {
-                            merge_vec.push(0);
+        {
+            rap_debug!("alias_bbcall in {:?}: {:?}", bb_index, call);
+            let lv = self.projection(*destination);
+            let mut merge_vec = Vec::new();
+            merge_vec.push(lv);
+            let mut may_drop_flag = 0;
+            if self.mop_graph.values[lv].may_drop {
+                may_drop_flag += 1;
+            }
+            for arg in args {
+                match arg.node {
+                    Operand::Copy(ref p) | Operand::Move(ref p) => {
+                        let rv = self.projection(*p);
+                        self.uaf_check(rv, bb_index, call.source_info.span, true);
+                        merge_vec.push(rv);
+                        if self.mop_graph.values[rv].may_drop {
+                            may_drop_flag += 1;
                         }
                     }
+                    Operand::Constant(_) => {
+                        merge_vec.push(0);
+                    }
                 }
-                if let ty::FnDef(target_id, _) = constant.const_.ty().kind() {
-                    if may_drop_flag > 1 {
-                        // This function does not introduce new aliases.
-                        if is_no_alias_intrinsic(*target_id) {
-                            return;
+            }
+            if let ty::FnDef(target_id, _) = constant.const_.ty().kind()
+                && may_drop_flag > 1
+            {
+                // This function does not introduce new aliases.
+                if is_no_alias_intrinsic(*target_id) {
+                    return;
+                }
+                if self.mop_graph.tcx.is_mir_available(*target_id) {
+                    rap_debug!("fn_map: {:?}", fn_map);
+                    if fn_map.contains_key(target_id) {
+                        let fn_aliases = fn_map.get(target_id).unwrap();
+                        rap_debug!("aliases of the fn: {:?}", fn_aliases);
+                        if fn_aliases.aliases().is_empty()
+                            && let Some(l_set_idx) = self.mop_graph.find_alias_set(lv)
+                        {
+                            self.mop_graph.alias_sets[l_set_idx].remove(&lv);
                         }
-                        if self.mop_graph.tcx.is_mir_available(*target_id) {
-                            rap_debug!("fn_map: {:?}", fn_map);
-                            if fn_map.contains_key(&target_id) {
-                                let fn_aliases = fn_map.get(&target_id).unwrap();
-                                rap_debug!("aliases of the fn: {:?}", fn_aliases);
-                                if fn_aliases.aliases().is_empty() {
-                                    if let Some(l_set_idx) = self.mop_graph.find_alias_set(lv) {
-                                        self.mop_graph.alias_sets[l_set_idx].remove(&lv);
-                                    }
-                                }
-                                for alias in fn_aliases.aliases().iter() {
-                                    if !alias.valuable() {
-                                        continue;
-                                    }
-                                    self.handle_fn_alias(alias, &merge_vec);
-                                }
+                        for alias in fn_aliases.aliases().iter() {
+                            if !alias.valuable() {
+                                continue;
                             }
-                        } else {
-                            if self.mop_graph.values[lv].may_drop {
-                                for rv in &merge_vec {
-                                    if self.mop_graph.values[*rv].may_drop
-                                        && lv != *rv
-                                        && self.mop_graph.values[lv].is_ptr()
-                                    {
-                                        self.mop_graph.merge_alias(lv, *rv);
-                                        self.clear_drop_info(lv);
-                                    }
-                                }
-                            }
+                            self.handle_fn_alias(alias, &merge_vec);
+                        }
+                    }
+                } else if self.mop_graph.values[lv].may_drop {
+                    for rv in &merge_vec {
+                        if self.mop_graph.values[*rv].may_drop
+                            && lv != *rv
+                            && self.mop_graph.values[lv].is_ptr()
+                        {
+                            self.mop_graph.merge_alias(lv, *rv);
+                            self.clear_drop_info(lv);
                         }
                     }
                 }
@@ -130,12 +127,12 @@ impl<'tcx> SafeDropGraph<'tcx> {
         }
         self.mop_graph.alias_sets[r_set_idx].insert(lv_idx);
 
-        if self.mop_graph.values[lv_idx].fields.len() > 0
-            || self.mop_graph.values[rv_idx].fields.len() > 0
+        if !self.mop_graph.values[lv_idx].fields.is_empty()
+            || !self.mop_graph.values[rv_idx].fields.is_empty()
         {
             self.sync_field_alias(lv_idx, rv_idx, 0, true);
         }
-        if self.mop_graph.values[rv_idx].father != None {
+        if self.mop_graph.values[rv_idx].father.is_some() {
             self.sync_father_alias(lv_idx, rv_idx, r_set_idx);
         }
     }
@@ -317,7 +314,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let right_local = self.mop_graph.values[rv].local;
 
         for index in fn_alias.lhs_fields().iter() {
-            if !self.mop_graph.values[lv].fields.contains_key(&index) {
+            if !self.mop_graph.values[lv].fields.contains_key(index) {
                 let new_index = self.mop_graph.values.len();
                 let need_drop = fn_alias.lhs_need_drop;
                 let may_drop = fn_alias.lhs_may_drop;
@@ -329,10 +326,10 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     .push(DropRecord::from(new_index, &self.drop_record[lv]));
                 self.mop_graph.values.push(node);
             }
-            lv = *self.mop_graph.values[lv].fields.get(&index).unwrap();
+            lv = *self.mop_graph.values[lv].fields.get(index).unwrap();
         }
         for index in fn_alias.rhs_fields().iter() {
-            if !self.mop_graph.values[rv].fields.contains_key(&index) {
+            if !self.mop_graph.values[rv].fields.contains_key(index) {
                 let new_index = self.mop_graph.values.len();
                 let need_drop = fn_alias.rhs_need_drop;
                 let may_drop = fn_alias.rhs_may_drop;
@@ -344,7 +341,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                     .push(DropRecord::from(new_index, &self.drop_record[rv]));
                 self.mop_graph.values.push(node);
             }
-            rv = *self.mop_graph.values[rv].fields.get(&index).unwrap();
+            rv = *self.mop_graph.values[rv].fields.get(index).unwrap();
         }
         self.merge_alias(lv, rv);
     }
@@ -383,16 +380,16 @@ impl<'tcx> SafeDropGraph<'tcx> {
         let idx1 = if idx2 < idx1 { idx1 - 1 } else { idx1 };
         self.mop_graph.alias_sets[idx1].extend(set2);
 
-        if self.mop_graph.values[e1].fields.len() > 0 {
+        if !self.mop_graph.values[e1].fields.is_empty() {
             self.sync_field_alias(e2, e1, 0, false);
         }
-        if self.mop_graph.values[e2].fields.len() > 0 {
+        if !self.mop_graph.values[e2].fields.is_empty() {
             self.sync_field_alias(e1, e2, 0, false);
         }
-        if self.mop_graph.values[e1].father != None {
+        if self.mop_graph.values[e1].father.is_some() {
             self.sync_father_alias(e2, e1, idx1);
         }
-        if self.mop_graph.values[e2].father != None {
+        if self.mop_graph.values[e2].father.is_some() {
             self.sync_father_alias(e1, e2, idx1);
         }
     }
