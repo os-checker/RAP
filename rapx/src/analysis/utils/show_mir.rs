@@ -101,7 +101,7 @@ impl<'tcx> Display for Rvalue<'tcx> {
             Rvalue::ThreadLocalRef(..) => s += "ThreadLocalRef",
             Rvalue::Cast(..) => s += "Cast",
             Rvalue::BinaryOp(..) => s += "BinaryOp",
-            Rvalue::NullaryOp(..) => s += "NullaryOp",
+            // Rvalue::NullaryOp(..) => s += "NullaryOp",
             Rvalue::UnaryOp(..) => s += "UnaryOp",
             Rvalue::Discriminant(..) => s += "Discriminant",
             Rvalue::Aggregate(..) => s += "Aggregate",

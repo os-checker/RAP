@@ -79,6 +79,7 @@ impl<'tcx> SymbExpr<'tcx> {
                 }
             }
             Operand::Constant(c) => SymbExpr::Constant(c.const_),
+            Operand::RuntimeChecks(_) => SymbExpr::Unknown,
         }
     }
 
@@ -114,7 +115,7 @@ impl<'tcx> SymbExpr<'tcx> {
             | Rvalue::Aggregate(..)
             | Rvalue::Repeat(..)
             | Rvalue::ShallowInitBox(..)
-            | Rvalue::NullaryOp(..)
+            // | Rvalue::NullaryOp(..)
             | Rvalue::Discriminant(..)
             | Rvalue::CopyForDeref(..) => SymbExpr::Unknown,
             Rvalue::RawPtr(raw_ptr_kind, place) => todo!(),

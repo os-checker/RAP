@@ -144,6 +144,7 @@ impl<'tcx> MopGraph<'tcx> {
                                             }
                                         }
                                     }
+                                    Operand::RuntimeChecks(_) => (),
                                 }
                             }
                             Rvalue::Ref(_, _, rv_place)
@@ -182,6 +183,7 @@ impl<'tcx> MopGraph<'tcx> {
                                         }
                                     }
                                     Operand::Constant(_) => {}
+                                    Operand::RuntimeChecks(_) => (),
                                 }
                             }
                             Rvalue::Cast(_, operand, _) => match operand {
@@ -210,6 +212,7 @@ impl<'tcx> MopGraph<'tcx> {
                                     }
                                 }
                                 Operand::Constant(_) => {}
+                                Operand::RuntimeChecks(_) => (),
                             },
                             Rvalue::Aggregate(kind, operands) => {
                                 match kind.as_ref() {
@@ -263,6 +266,7 @@ impl<'tcx> MopGraph<'tcx> {
                                                 Operand::Constant(_) => {
                                                     // Constants don't need alias analysis
                                                 }
+                                                Operand::RuntimeChecks(_) => (),
                                             }
                                         }
                                     }
@@ -325,6 +329,7 @@ impl<'tcx> MopGraph<'tcx> {
                                                 Operand::Constant(_) => {
                                                     // Constants don't need alias analysis for this context.
                                                 }
+                                                Operand::RuntimeChecks(_) => (),
                                             }
                                         }
                                     }
@@ -350,6 +355,7 @@ impl<'tcx> MopGraph<'tcx> {
                                                     }
                                                 }
                                                 Operand::Constant(_) => {}
+                                                Operand::RuntimeChecks(_) => (),
                                             }
                                         }
                                     }

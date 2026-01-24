@@ -418,9 +418,9 @@ impl<'tcx> BodyVisitor<'tcx> {
                 }
             }
             // NullaryOp: x = SizeOf(T); This is runtime checks
-            Rvalue::NullaryOp(_null_op) => {
-                // todo
-            }
+            // Rvalue::NullaryOp(_null_op) => {
+            // todo
+            // }
             // UnaryOp: x = !y / x = -y
             Rvalue::UnaryOp(un_op, op) => {
                 // Unary op: record unary operation on LHS (operand value not stored here).
@@ -1349,6 +1349,7 @@ impl<'tcx> BodyVisitor<'tcx> {
                     }
                 }
             },
+            Operand::RuntimeChecks(_) => None,
         }
     }
 

@@ -610,6 +610,7 @@ impl<'tcx> Replacer<'tcx> {
                             self.replace_place(place, &bb);
                         }
                         Operand::Constant(const_operand) => {}
+                        Operand::RuntimeChecks(_) => (),
                     }
                 }
                 self.rename_local_def(destination, &bb, true);

@@ -1208,6 +1208,7 @@ where
                     arg_operands.push(op.node.clone());
                     constant_count += 1;
                 }
+                Operand::RuntimeChecks(_) => (),
             }
         }
         {
@@ -1340,6 +1341,7 @@ where
                     sink_node.set_range(Range::default(T::min_value()));
                 };
             }
+            Operand::RuntimeChecks(_) => (),
         }
     }
     fn add_essa_op(
@@ -1483,6 +1485,7 @@ where
                         sink_node.set_range(Range::default(T::min_value()));
                     }
                 }
+                Operand::RuntimeChecks(_) => (),
             }
         }
 
@@ -1572,6 +1575,7 @@ where
                 Some(place)
             }
             Operand::Constant(_) => None,
+            Operand::RuntimeChecks(_) => None,
         };
 
         match op2 {
@@ -1618,6 +1622,7 @@ where
                     self.usemap.entry(place).or_default().insert(bop_index);
                 }
             }
+            Operand::RuntimeChecks(_) => (),
         };
 
         // rap_trace!("varnodes{:?}\n", self.vars);

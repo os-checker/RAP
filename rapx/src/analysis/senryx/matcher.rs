@@ -82,5 +82,6 @@ pub fn get_arg_place(arg: &Operand) -> (bool, usize) {
             }
             return (true, val);
         }
+        Operand::RuntimeChecks(_) => (false, 0),
     }
 }

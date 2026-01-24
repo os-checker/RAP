@@ -42,6 +42,7 @@ fn make_dummy_fn(ident_name: &str) -> Box<Item> {
         contract: None,
         define_opaque: None,
         body: Some(Box::new(make_dummy_block())),
+        eii_impls: Default::default(),
     };
 
     Box::new(Item {

@@ -67,6 +67,7 @@ impl<'tcx> SafeDropGraph<'tcx> {
                         Operand::Constant(_) => {
                             merge_vec.push(0);
                         }
+                        Operand::RuntimeChecks(_) => (),
                     }
                 }
                 if let ty::FnDef(target_id, _) = constant.const_.ty().kind() {

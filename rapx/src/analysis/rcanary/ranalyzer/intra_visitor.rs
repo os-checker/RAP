@@ -2249,6 +2249,7 @@ impl<'tcx, 'ctx, 'a> IntraFlowAnalysis<'tcx, 'ctx, 'a> {
                     }
                 }
                 Operand::Constant(..) => continue,
+                Operand::RuntimeChecks(_) => continue,
             }
         }
 

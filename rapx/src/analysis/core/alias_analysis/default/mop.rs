@@ -212,6 +212,7 @@ impl<'tcx> MopGraph<'tcx> {
                                 sw_val = val as usize;
                             }
                         }
+                        Operand::RuntimeChecks(_) => (),
                     }
                     if single_target {
                         /* Find the target based on the value;

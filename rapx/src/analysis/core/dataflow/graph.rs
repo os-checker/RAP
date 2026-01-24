@@ -106,6 +106,7 @@ impl Graph {
                 };
                 self.add_const_edge(src_desc, src_ty, dst, EdgeOp::Const);
             }
+            Operand::RuntimeChecks(_) => (),
         }
     }
 
@@ -221,9 +222,9 @@ impl Graph {
                     self.add_operand(operand, dst);
                     self.nodes[dst].ops[seq] = NodeOp::UnaryOp;
                 }
-                Rvalue::NullaryOp(_) => {
-                    self.nodes[dst].ops[seq] = NodeOp::NullaryOp;
-                }
+                // Rvalue::NullaryOp(_) => {
+                //     self.nodes[dst].ops[seq] = NodeOp::NullaryOp;
+                // }
                 Rvalue::ThreadLocalRef(_) => {
                     //todo!()
                 }

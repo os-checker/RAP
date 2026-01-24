@@ -411,6 +411,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                         result = Range::new(len.clone(), len.clone(), RangeType::Regular);
                     }
                     Some(Operand::Constant(c)) => {}
+                    Some(Operand::RuntimeChecks(_)) => {}
                     None => {}
                 }
                 rap_trace!(
@@ -428,6 +429,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                         result = caller_vars[place].get_range().clone();
                     }
                     Some(Operand::Constant(c)) => {}
+                    Some(Operand::RuntimeChecks(_)) => {}
                     None => {}
                 }
 
@@ -521,6 +523,7 @@ impl<'tcx, T: IntervalArithmetic + ConstConvert + Debug> CallOp<'tcx, T> {
                             }
                             // Find the corresponding Place and VarNode in the callee.
                         }
+                        Operand::RuntimeChecks(_) => (),
                     }
                 }
 
